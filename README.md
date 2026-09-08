@@ -21,7 +21,7 @@ flutter pub get
 flutter run
 ```
 
-AR requires a physical ARCore-supported Android device or an ARKit-capable iPhone. It will not work in a normal simulator. Android requires API 24 or newer; iOS requires version 13 or newer.
+AR requires a physical ARCore-supported Android device or an ARKit-capable iPhone. It will not work in a normal simulator. The current AR renderer requires Android 9 (API 28) or newer; iOS requires version 13 or newer.
 
 ## Automated releases
 
