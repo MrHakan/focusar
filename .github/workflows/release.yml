@@ -36,12 +36,18 @@ jobs:
           cache: true
       - run: chmod +x tool/prepare_android.sh && tool/prepare_android.sh
       - run: flutter pub get
-      - run: flutter build apk --release
+      - name: Build universal Android APK
+        run: flutter build apk --release
       - run: cp build/app/outputs/flutter-apk/app-release.apk FocusAR-Android.apk
+      - name: Build architecture-specific Android APKs
+        run: flutter build apk --release --split-per-abi
+      - run: cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk FocusAR-Android-arm64-v8a.apk
       - uses: actions/upload-artifact@v4
         with:
           name: android-release
-          path: FocusAR-Android.apk
+          path: |
+            FocusAR-Android.apk
+            FocusAR-Android-arm64-v8a.apk
 
   ios:
     needs: quality
@@ -72,4 +78,9 @@ jobs:
       - name: Upload binaries to the release tag
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload release artifacts/android-release/FocusAR-Android.apk artifacts/ios-release/FocusAR-iOS-unsigned.ipa --clobber
+        run: >-
+          gh release upload release
+          artifacts/android-release/FocusAR-Android.apk
+          artifacts/android-release/FocusAR-Android-arm64-v8a.apk
+          artifacts/ios-release/FocusAR-iOS-unsigned.ipa
+          --clobber
