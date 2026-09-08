@@ -1,0 +1,26 @@
+name: focusar
+description: A cross-platform AR-assisted focus timer that keeps the phone face-down.
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ar_flutter_plugin_2: ^0.0.3
+  cupertino_icons: ^1.0.8
+  sensors_plus: ^6.1.1
+  vector_math: ^2.1.4
+  wakelock_plus: ^1.2.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/models/focus_zone.gltf

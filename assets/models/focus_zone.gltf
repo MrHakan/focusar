@@ -1,0 +1,48 @@
+{
+  "asset": {"version": "2.0", "generator": "FocusAR"},
+  "scene": 0,
+  "scenes": [{"nodes": [0]}],
+  "nodes": [{"mesh": 0, "name": "Focus Zone"}],
+  "meshes": [{
+    "name": "Phone-sized focus zone",
+    "primitives": [{"attributes": {"POSITION": 0}, "indices": 1, "material": 0}]
+  }],
+  "materials": [{
+    "name": "Focus blue",
+    "pbrMetallicRoughness": {
+      "baseColorFactor": [0.22, 0.42, 1.0, 0.68],
+      "metallicFactor": 0.05,
+      "roughnessFactor": 0.32
+    },
+    "alphaMode": "BLEND",
+    "doubleSided": true
+  }],
+  "buffers": [{
+    "byteLength": 168,
+    "uri": "data:application/octet-stream;base64,d74fvQAAAADD9ai9d74fPQAAAADD9ai9d74fPW8SAzzD9ai9d74fvW8SAzzD9ai9d74fvQAAAADD9ag9d74fPQAAAADD9ag9d74fPW8SAzzD9ag9d74fvW8SAzzD9ag9AAABAAIAAAACAAMABAAGAAUABAAHAAYAAAAEAAUAAAAFAAEAAwACAAYAAwAGAAcAAQAFAAYAAQAGAAIAAAADAAcAAAAHAAQA"
+  }],
+  "bufferViews": [
+    {"buffer": 0, "byteOffset": 0, "byteLength": 96, "target": 34962},
+    {"buffer": 0, "byteOffset": 96, "byteLength": 72, "target": 34963}
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "byteOffset": 0,
+      "componentType": 5126,
+      "count": 8,
+      "type": "VEC3",
+      "min": [-0.039, 0.0, -0.0825],
+      "max": [0.039, 0.008, 0.0825]
+    },
+    {
+      "bufferView": 1,
+      "byteOffset": 0,
+      "componentType": 5123,
+      "count": 36,
+      "type": "SCALAR",
+      "min": [0],
+      "max": [7]
+    }
+  ]
+}

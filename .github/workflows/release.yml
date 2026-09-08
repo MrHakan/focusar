@@ -1,0 +1,75 @@
+name: Build and publish mobile apps
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: focusar-release
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+  android:
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: chmod +x tool/prepare_android.sh && tool/prepare_android.sh
+      - run: flutter pub get
+      - run: flutter build apk --release
+      - run: cp build/app/outputs/flutter-apk/app-release.apk FocusAR-Android.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-release
+          path: FocusAR-Android.apk
+
+  ios:
+    needs: quality
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: chmod +x tool/prepare_ios.sh && tool/prepare_ios.sh
+      - run: flutter pub get
+      - run: flutter build ios --release --no-codesign
+      - run: mkdir Payload && cp -R build/ios/iphoneos/Runner.app Payload/ && zip -qry FocusAR-iOS-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-release
+          path: FocusAR-iOS-unsigned.ipa
+
+  release:
+    needs: [android, ios]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Upload binaries to the release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload release artifacts/android-release/FocusAR-Android.apk artifacts/ios-release/FocusAR-iOS-unsigned.ipa --clobber
