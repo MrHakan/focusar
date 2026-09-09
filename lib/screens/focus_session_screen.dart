@@ -7,13 +7,20 @@ import 'package:sensors_plus/sensors_plus.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../services/focus_timer.dart';
+import '../services/motion_guard.dart';
 
 enum SessionStage { waiting, focusing, warning, complete }
+enum FocusMethod { ar, sensors }
 
 class FocusSessionScreen extends StatefulWidget {
-  const FocusSessionScreen({required this.duration, super.key});
+  const FocusSessionScreen({
+    required this.duration,
+    this.method = FocusMethod.sensors,
+    super.key,
+  });
 
   final Duration duration;
+  final FocusMethod method;
 
   @override
   State<FocusSessionScreen> createState() => _FocusSessionScreenState();
@@ -22,15 +29,17 @@ class FocusSessionScreen extends StatefulWidget {
 class _FocusSessionScreenState extends State<FocusSessionScreen>
     with WidgetsBindingObserver {
   late final FocusTimer _clock;
+  final MotionGuard _motionGuard = MotionGuard();
   StreamSubscription<AccelerometerEvent>? _accelerometer;
+  StreamSubscription<UserAccelerometerEvent>? _userAccelerometer;
   StreamSubscription<GyroscopeEvent>? _gyroscope;
   Timer? _tickTimer;
   Timer? _alarmTimer;
   DateTime? _stableSince;
   DateTime? _unstableSince;
   SessionStage _stage = SessionStage.waiting;
-  bool _faceDown = false;
   double _rotationRate = 0;
+  double _userAcceleration = 0;
 
   @override
   void initState() {
@@ -41,6 +50,16 @@ class _FocusSessionScreenState extends State<FocusSessionScreen>
     _accelerometer = accelerometerEventStream(
       samplingPeriod: SensorInterval.gameInterval,
     ).listen(_onAccelerometer);
+    _userAccelerometer = userAccelerometerEventStream(
+      samplingPeriod: SensorInterval.gameInterval,
+    ).listen((event) {
+      _userAcceleration = math.sqrt(
+        event.x * event.x + event.y * event.y + event.z * event.z,
+      );
+      if (_stage == SessionStage.focusing && _userAcceleration > 3.5) {
+        _enterWarning();
+      }
+    });
     _gyroscope = gyroscopeEventStream(
       samplingPeriod: SensorInterval.gameInterval,
     ).listen((event) {
@@ -60,10 +79,14 @@ class _FocusSessionScreenState extends State<FocusSessionScreen>
   void _onAccelerometer(AccelerometerEvent event) {
     if (_stage == SessionStage.complete) return;
     final now = DateTime.now();
-    final gravity = math.sqrt(event.x * event.x + event.y * event.y + event.z * event.z);
-    _faceDown = event.z < -7 && event.x.abs() < 4 && event.y.abs() < 4;
-    final still = (gravity - 9.81).abs() < 1.25 && _rotationRate < 0.55;
-    final safelyPlaced = _faceDown && still;
+    final reading = _motionGuard.evaluate(
+      x: event.x,
+      y: event.y,
+      z: event.z,
+      rotationRate: _rotationRate,
+      userAcceleration: _userAcceleration,
+    );
+    final safelyPlaced = reading.settled;
 
     if (_stage == SessionStage.waiting) {
       if (safelyPlaced) {
@@ -78,9 +101,11 @@ class _FocusSessionScreenState extends State<FocusSessionScreen>
     }
 
     if (_stage == SessionStage.focusing) {
-      if (!safelyPlaced) {
+      if (reading.suddenMotion) {
+        _enterWarning();
+      } else if (reading.pickedUp) {
         _unstableSince ??= now;
-        if (now.difference(_unstableSince!) > const Duration(milliseconds: 220)) {
+        if (now.difference(_unstableSince!) > const Duration(milliseconds: 160)) {
           _enterWarning();
         }
       } else {
@@ -152,6 +177,7 @@ class _FocusSessionScreenState extends State<FocusSessionScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _accelerometer?.cancel();
+    _userAccelerometer?.cancel();
     _gyroscope?.cancel();
     _tickTimer?.cancel();
     _alarmTimer?.cancel();
@@ -164,6 +190,7 @@ class _FocusSessionScreenState extends State<FocusSessionScreen>
     final warning = _stage == SessionStage.warning;
     final complete = _stage == SessionStage.complete;
     final waiting = _stage == SessionStage.waiting;
+    final sensorOnly = widget.method == FocusMethod.sensors;
 
     return PopScope(
       canPop: complete,
@@ -187,13 +214,45 @@ class _FocusSessionScreenState extends State<FocusSessionScreen>
               child: Column(
                 children: [
                   Align(
-                    alignment: Alignment.centerRight,
-                    child: GestureDetector(
-                      onLongPress: _confirmEnd,
-                      child: const Padding(
-                        padding: EdgeInsets.all(10),
-                        child: Icon(Icons.close_rounded, color: Colors.white38),
-                      ),
+                    alignment: Alignment.topCenter,
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(99),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                sensorOnly ? Icons.sensors_rounded : Icons.view_in_ar_rounded,
+                                size: 16,
+                                color: Colors.white70,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                sensorOnly ? 'MOTION SENSOR' : 'AR + SENSOR',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Spacer(),
+                        GestureDetector(
+                          onLongPress: _confirmEnd,
+                          child: const Padding(
+                            padding: EdgeInsets.all(10),
+                            child: Icon(Icons.close_rounded, color: Colors.white38),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const Spacer(),
@@ -210,12 +269,14 @@ class _FocusSessionScreenState extends State<FocusSessionScreen>
                   const SizedBox(height: 8),
                   Text(
                     waiting
-                        ? 'Place the phone face-down inside your AR zone.'
+                        ? sensorOnly
+                            ? 'Place the phone face-down on a stable surface.'
+                            : 'Place the phone face-down inside your AR zone.'
                         : warning
-                            ? "You're not done. Put the phone back face-down."
+                            ? "Movement detected. Put the phone back face-down."
                             : complete
                                 ? 'You stayed with it. Nice work.'
-                                : 'Your timer pauses if the phone is lifted.',
+                                : 'Your timer pauses as soon as the phone moves.',
                     textAlign: TextAlign.center,
                     style: const TextStyle(color: Colors.white70, fontSize: 16),
                   ),

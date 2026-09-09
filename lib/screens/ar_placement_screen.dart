@@ -30,7 +30,7 @@ class _ArPlacementScreenState extends State<ArPlacementScreen> {
   ARPlaneAnchor? _zoneAnchor;
   bool _placed = false;
   bool _busy = false;
-  String _message = 'Move slowly to find a flat surface, then tap it.';
+  String _message = 'Move slowly around the table, then tap a plane or a visible feature point.';
 
   @override
   void dispose() {
@@ -114,12 +114,18 @@ class _ArPlacementScreenState extends State<ArPlacementScreen> {
                             width: double.infinity,
                             height: 54,
                             child: FilledButton.icon(
-                              onPressed: _busy ? null : _continue,
+                              onPressed: _busy ? null : () => _continue(),
                               icon: const Icon(Icons.lock_rounded),
                               label: const Text('Use this zone'),
                             ),
                           ),
                         ],
+                        const SizedBox(height: 10),
+                        TextButton.icon(
+                          onPressed: _busy ? null : () => _continue(useAr: false),
+                          icon: const Icon(Icons.sensors_rounded),
+                          label: const Text('Continue without AR'),
+                        ),
                       ],
                     ),
                   ),
@@ -142,7 +148,7 @@ class _ArPlacementScreenState extends State<ArPlacementScreen> {
     _objects = objects;
     _anchors = anchors;
     session.onInitialize(
-      showFeaturePoints: false,
+      showFeaturePoints: true,
       showPlanes: true,
       showWorldOrigin: false,
       handleTaps: true,
@@ -160,7 +166,22 @@ class _ArPlacementScreenState extends State<ArPlacementScreen> {
         break;
       }
     }
-    if (hit == null || _anchors == null || _objects == null) return;
+    if (hit == null) {
+      for (final candidate in hits) {
+        if (candidate.type == ARHitTestResultType.point) {
+          hit = candidate;
+          break;
+        }
+      }
+    }
+    if (hit == null || _anchors == null || _objects == null) {
+      if (mounted) {
+        setState(() {
+          _message = 'No surface found at that point. Aim at a textured edge, move sideways, and tap again.';
+        });
+      }
+      return;
+    }
 
     setState(() => _busy = true);
     if (_zoneAnchor != null) {
@@ -194,10 +215,13 @@ class _ArPlacementScreenState extends State<ArPlacementScreen> {
     });
   }
 
-  void _continue() {
+  void _continue({bool useAr = true}) {
     Navigator.of(context).pushReplacement(
       MaterialPageRoute<void>(
-        builder: (_) => FocusSessionScreen(duration: widget.duration),
+        builder: (_) => FocusSessionScreen(
+          duration: widget.duration,
+          method: useAr ? FocusMethod.ar : FocusMethod.sensors,
+        ),
       ),
     );
   }

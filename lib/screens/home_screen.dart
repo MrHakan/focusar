@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../widgets/glass_card.dart';
 import 'ar_placement_screen.dart';
+import 'focus_session_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -53,7 +54,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Place a focus zone in AR, set your phone face-down, and stay in the moment.',
+                  'Start instantly with motion sensors, or place an optional AR focus zone.',
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white70, height: 1.45),
                 ),
                 const SizedBox(height: 34),
@@ -88,14 +89,36 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: FilledButton.icon(
                     onPressed: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
+                        builder: (_) => FocusSessionScreen(
+                          duration: Duration(minutes: _minutes),
+                          method: FocusMethod.sensors,
+                        ),
+                      ),
+                    ),
+                    icon: const Icon(Icons.sensors_rounded),
+                    label: const Text('Start with motion sensor', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF5B7CFF),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 11),
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
                         builder: (_) => ArPlacementScreen(duration: Duration(minutes: _minutes)),
                       ),
                     ),
                     icon: const Icon(Icons.view_in_ar_rounded),
-                    label: const Text('Place focus zone', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF5B7CFF),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    label: const Text('Place AR focus zone'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: Colors.white24),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                     ),
                   ),
                 ),
