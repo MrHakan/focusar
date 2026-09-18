@@ -1,7 +1,7 @@
 name: focusar
 description: A focus timer that locks your phone face-down in an AR zone and pays you back in screen time.
 publish_to: "none"
-version: 0.3.0+3
+version: 0.2.0+3
 
 environment:
   sdk: ">=3.5.0 <4.0.0"
