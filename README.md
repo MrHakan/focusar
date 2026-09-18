@@ -76,15 +76,25 @@ iOS 13 or newer.
 ## Automated releases
 
 Every push to `main`, or a manual run of **Build and publish mobile apps**, runs
-analysis and tests, builds both platforms, and replaces the assets on the
-existing [`release`](https://github.com/MrHakan/focusar/releases/tag/release)
-release:
+analysis and tests, builds both platforms, and cuts a **new GitHub release**
+carrying:
 
 - `FocusAR-Android.apk` — installable debug-signed release APK for testing.
 - `FocusAR-Android-arm64-v8a.apk` — smaller APK for modern 64-bit Android devices.
 - `FocusAR-iOS-unsigned.ipa` — unsigned iOS archive. Apple requires your
   Developer certificate and provisioning profile before it can be installed on a
   device or distributed through TestFlight/App Store.
+
+The tag is derived from `version:` in `pubspec.yaml`. A zero patch is dropped, so
+`0.2.0+3` publishes as `v0.2`, while `0.2.1+5` publishes as `v0.2.1`. Bump the
+version to name the next release.
+
+Pushes that do not bump the version still get a release of their own: the tag
+falls back to the build number (`v0.2-build.4`), and then to the workflow run
+number (`v0.2-build.4.17`), so two builds never fight over one tag.
+
+The older single `release` tag is left untouched, with whatever assets it already
+held.
 
 For Play Store distribution, replace the debug signing configuration with an
 upload keystore kept in GitHub Actions secrets. Do not commit certificates or
