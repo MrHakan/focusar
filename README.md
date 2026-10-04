@@ -8,7 +8,11 @@ minute earns a credit, and every credit buys a minute of screen time back.
 ## Flow
 
 1. Pick a **Deep block** (25/45/60/90 minutes, counts down) or **Earn screen
-   time** (open-ended, counts up).
+   time** (open-ended, counts up). After the first session, **Quick start**
+   on the home screen starts the next one with the same type, length, and
+   placement in one tap (an AR session opens straight onto placement, since
+   an anchor cannot outlive its camera session), and the home screen opens
+   on those settings.
 2. Start straight away on the motion sensors, or scan a surface and drop an AR
    focus zone — see [AR placement](#ar-placement).
 3. Put the phone face-down. The clock starts after it has been still for 1.2

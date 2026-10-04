@@ -65,7 +65,9 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
     final wallet = _wallet = WalletScope.of(context);
     // Built here rather than in initState because the motion sensitivity is a
     // saved preference. It is fixed for the session once it starts.
-    _controller ??= SessionController(
+    if (_controller != null) return;
+    unawaited(wallet.rememberConfig(widget.config));
+    _controller = SessionController(
       config: widget.config,
       feed: widget.feed ?? DeviceSensorFeed(),
       guard: MotionGuard.forSensitivity(wallet.preferences.sensitivity),

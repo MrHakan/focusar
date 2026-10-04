@@ -7,6 +7,7 @@ import '../domain/focus_preferences.dart';
 import '../domain/focus_zone.dart';
 import '../domain/motion_guard.dart';
 import '../domain/progress_log.dart';
+import '../domain/session_mode.dart';
 import '../domain/session_checkpoint.dart';
 import '../domain/session_record.dart';
 import '../domain/wallet_snapshot.dart';
@@ -134,6 +135,10 @@ class WalletController extends ChangeNotifier {
 
   Future<void> setSensitivity(Sensitivity sensitivity) =>
       _updatePreferences(_preferences.copyWith(sensitivity: sensitivity));
+
+  /// Remembers how a session was started, for quick start next time.
+  Future<void> rememberConfig(SessionConfig config) =>
+      _updatePreferences(_preferences.copyWith(lastConfig: config));
 
   Future<void> setDailyGoal(Duration goal) {
     if (goal <= Duration.zero) return Future.value();

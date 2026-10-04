@@ -358,11 +358,17 @@ class SessionController extends ChangeNotifier {
     return true;
   }
 
+  /// Cancels both subscriptions at once, so the heartbeat stops the moment
+  /// the session does rather than after the sensor feed has wound down.
   Future<void> _stopListening() async {
-    await _samples?.cancel();
-    await _ticks?.cancel();
+    final samples = _samples;
+    final ticks = _ticks;
     _samples = null;
     _ticks = null;
+    await Future.wait([
+      if (samples != null) samples.cancel(),
+      if (ticks != null) ticks.cancel(),
+    ]);
   }
 
   @override

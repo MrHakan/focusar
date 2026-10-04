@@ -24,10 +24,25 @@ class _HomeScreenState extends State<HomeScreen> {
   FocusMode _mode = FocusMode.timed;
   int _minutes = 25;
 
+  bool _restored = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _announceRecovery());
+  }
+
+  /// Opens on the settings the last session used, so the choices on screen
+  /// match what quick start would do.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_restored) return;
+    _restored = true;
+    final last = WalletScope.of(context).preferences.lastConfig;
+    if (last == null) return;
+    _mode = last.mode;
+    if (_durations.contains(last.target.inMinutes)) _minutes = last.target.inMinutes;
   }
 
   /// Says so when the last session was cut short by the app being killed and
@@ -122,6 +137,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   'minute of screen time back.',
                   style: text.bodyLarge?.copyWith(color: Colors.white70, height: 1.45),
                 ),
+                if (wallet.preferences.lastConfig case final last?) ...[
+                  const SizedBox(height: 22),
+                  _QuickStartCard(config: last, onTap: () => _start(last)),
+                ],
                 const SizedBox(height: 22),
                 _TodayStrip(
                   focused: wallet.today.focused,
@@ -224,6 +243,13 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Starts a session straight from [config]: the motion sensors begin at
+  /// once, and an AR session opens the placement screen, since an anchor
+  /// cannot outlive the camera session that made it.
+  void _start(SessionConfig config) => _open(
+        config.usesAr ? ArPlacementScreen(config: config) : SessionScreen(config: config),
+      );
+
   void _open(Widget screen) {
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
   }
@@ -288,6 +314,82 @@ class _ModeTile extends StatelessWidget {
               const Icon(Icons.check_circle_rounded,
                   size: 20, color: FocusPalette.focusSoft),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One tap back into the last session's settings.
+class _QuickStartCard extends StatelessWidget {
+  const _QuickStartCard({required this.config, required this.onTap});
+
+  final SessionConfig config;
+  final VoidCallback onTap;
+
+  String get _summary => [
+        config.mode.label,
+        if (config.isTimed) '${config.target.inMinutes} min',
+        config.usesAr ? 'AR zone' : 'Motion sensor',
+      ].join(' · ');
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Quick start: $_summary',
+      excludeSemantics: true,
+      child: Material(
+        color: FocusPalette.focus,
+        borderRadius: BorderRadius.circular(22),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(22),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 16, 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.play_arrow_rounded,
+                    color: FocusPalette.focus,
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Quick start',
+                        style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _summary,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.82),
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  config.usesAr ? Icons.view_in_ar_rounded : Icons.sensors_rounded,
+                  color: Colors.white70,
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
