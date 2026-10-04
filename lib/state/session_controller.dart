@@ -40,16 +40,14 @@ class SessionController extends ChangeNotifier {
         _now = clock ?? DateTime.now,
         _timer = config.isTimed
             ? FocusClock.countdown(config.target)
-            : FocusClock.countUp();
+            : FocusClock.countUp(),
+        _pickup = PickupDetector(guard.thresholds);
 
   /// How long the phone must sit still before the clock starts.
   static const Duration armDelay = Duration(milliseconds: 1200);
 
   /// How long it must sit still again to shake off an interruption.
   static const Duration resumeDelay = Duration(seconds: 1);
-
-  /// Brief movement is forgiven for this long before the alarm starts.
-  static const Duration disturbanceGrace = Duration(milliseconds: 160);
 
   /// Focused time between two checkpoints — the most a killed app can lose.
   static const Duration checkpointEvery = Duration(seconds: 10);
@@ -75,6 +73,7 @@ class SessionController extends ChangeNotifier {
   final Duration _tickInterval;
   final DateTime Function() _now;
   final FocusClock _timer;
+  final PickupDetector _pickup;
 
   StreamSubscription<MotionSample>? _samples;
   StreamSubscription<void>? _ticks;
@@ -82,7 +81,7 @@ class SessionController extends ChangeNotifier {
   SessionStage _stage = SessionStage.arming;
   DateTime? _startedAt;
   DateTime? _stableSince;
-  DateTime? _disturbedSince;
+  DateTime? _unsettledSince;
   int _unbrokenSeconds = 0;
   int _interruptions = 0;
   double _earned = 0;
@@ -162,8 +161,7 @@ class SessionController extends ChangeNotifier {
       return;
     }
     _stage = SessionStage.paused;
-    _stableSince = null;
-    _disturbedSince = null;
+    _resetWatch();
     _saveCheckpoint();
     notifyListeners();
   }
@@ -172,8 +170,7 @@ class SessionController extends ChangeNotifier {
   void resume() {
     if (_stage != SessionStage.paused) return;
     _stage = SessionStage.arming;
-    _stableSince = null;
-    _disturbedSince = null;
+    _resetWatch();
     notifyListeners();
   }
 
@@ -186,8 +183,7 @@ class SessionController extends ChangeNotifier {
     if (_stage == SessionStage.complete || _away) return;
     _away = true;
     _awaySince = _now();
-    _stableSince = null;
-    _disturbedSince = null;
+    _resetWatch();
     if (_stage == SessionStage.focusing) {
       _interrupt();
     } else {
@@ -204,8 +200,7 @@ class SessionController extends ChangeNotifier {
     final since = _awaySince;
     _lastAbsence = since == null ? Duration.zero : _now().difference(since);
     _awaySince = null;
-    _stableSince = null;
-    _disturbedSince = null;
+    _resetWatch();
     _lastBeat = _now();
     notifyListeners();
   }
@@ -216,13 +211,7 @@ class SessionController extends ChangeNotifier {
   void _onSample(MotionSample sample) {
     if (_stage == SessionStage.complete || _away) return;
 
-    final reading = _guard.evaluate(
-      x: sample.x,
-      y: sample.y,
-      z: sample.z,
-      rotationRate: sample.rotationRate,
-      userAcceleration: sample.userAcceleration,
-    );
+    final reading = _guard.read(sample);
     final stabilityChanged = _updateStability(reading.stability);
 
     switch (_stage) {
@@ -240,43 +229,42 @@ class SessionController extends ChangeNotifier {
     if (stabilityChanged) notifyListeners();
   }
 
-  /// Waits for [delay] of uninterrupted stillness, then runs [onSettled].
+  /// Waits for [delay] of stillness, then runs [onSettled]. A turned or
+  /// tilted phone restarts the wait at once; a jolt from the desk only does if
+  /// it outlasts the shake grace, so a busy desk can still arm a session.
   void _awaitPlacement(MotionReading reading, Duration delay, VoidCallback onSettled) {
+    final now = _now();
     if (!reading.settled) {
-      _stableSince = null;
+      if (reading.displaced) {
+        _stableSince = null;
+        _unsettledSince = null;
+        return;
+      }
+      final unsettled = _unsettledSince ??= now;
+      if (now.difference(unsettled) > _guard.thresholds.shakeGrace) {
+        _stableSince = null;
+      }
       return;
     }
-    final now = _now();
+    _unsettledSince = null;
     final since = _stableSince ??= now;
     if (now.difference(since) >= delay) onSettled();
   }
 
   void _watchForPickup(MotionReading reading) {
-    if (reading.sudden) {
-      _interrupt();
-      return;
-    }
-    if (!reading.disturbed) {
-      _disturbedSince = null;
-      return;
-    }
-    final now = _now();
-    final since = _disturbedSince ??= now;
-    if (now.difference(since) >= disturbanceGrace) _interrupt();
+    if (_pickup.observe(reading, _now())) _interrupt();
   }
 
   void _begin() {
     _stage = SessionStage.focusing;
-    _stableSince = null;
-    _disturbedSince = null;
+    _resetWatch();
     _alerts.started();
     notifyListeners();
   }
 
   void _recover() {
     _stage = SessionStage.focusing;
-    _stableSince = null;
-    _disturbedSince = null;
+    _resetWatch();
     _alerts.started();
     notifyListeners();
   }
@@ -286,8 +274,7 @@ class SessionController extends ChangeNotifier {
     _stage = SessionStage.interrupted;
     _interruptions += 1;
     _unbrokenSeconds = 0;
-    _stableSince = null;
-    _disturbedSince = null;
+    _resetWatch();
     _alerts.warn();
     _saveCheckpoint();
     notifyListeners();
@@ -332,8 +319,7 @@ class SessionController extends ChangeNotifier {
     if (_finished) return;
     _finished = true;
     _stage = SessionStage.complete;
-    _stableSince = null;
-    _disturbedSince = null;
+    _resetWatch();
     if (completed) _alerts.finished();
 
     unawaited(_stopListening());
@@ -349,6 +335,12 @@ class SessionController extends ChangeNotifier {
     );
     notifyListeners();
     onComplete?.call(record);
+  }
+
+  void _resetWatch() {
+    _stableSince = null;
+    _unsettledSince = null;
+    _pickup.reset();
   }
 
   void _saveCheckpoint() {

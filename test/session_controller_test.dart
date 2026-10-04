@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:focusar/domain/credit_rules.dart';
+import 'package:focusar/domain/motion_guard.dart';
+import 'package:focusar/domain/motion_sample.dart';
 import 'package:focusar/domain/session_checkpoint.dart';
 import 'package:focusar/domain/session_mode.dart';
 import 'package:focusar/domain/session_record.dart';
@@ -27,6 +29,7 @@ void main() {
   SessionController build({
     FocusMode mode = FocusMode.timed,
     Duration target = const Duration(seconds: 5),
+    Sensitivity sensitivity = Sensitivity.balanced,
   }) {
     return SessionController(
       config: SessionConfig(
@@ -35,6 +38,7 @@ void main() {
         target: target,
       ),
       feed: feed,
+      guard: MotionGuard.forSensitivity(sensitivity),
       alerts: alerts,
       ticker: ticker.call,
       clock: clock.call,
@@ -172,7 +176,7 @@ void main() {
       await settle(session);
 
       await feed.emit(FakeSensorFeed.lifted);
-      clock.advance(SessionController.disturbanceGrace + const Duration(milliseconds: 1));
+      clock.advance(const MotionThresholds().disturbanceGrace + const Duration(milliseconds: 1));
       await feed.emit(FakeSensorFeed.lifted);
 
       expect(session.stage, SessionStage.interrupted);
@@ -246,6 +250,76 @@ void main() {
 
       expect(session.stage, SessionStage.interrupted);
       expect(session.interruptions, 1);
+
+      session.dispose();
+    });
+  });
+
+  group('desk vibration', () {
+    /// A phone face-down on a desk that is being typed on.
+    const thump = MotionSample(
+      x: 0,
+      y: 0,
+      z: -9.81,
+      rotationRate: 0.1,
+      userAcceleration: 2.6,
+    );
+
+    /// Plays [seconds] of keyboard thumps: 200 ms on, 200 ms off, at 50 Hz.
+    Future<void> typeFor(double seconds) async {
+      for (var ms = 0; ms < seconds * 1000; ms += 20) {
+        await feed.emit((ms ~/ 200).isEven ? thump : FakeSensorFeed.still);
+        clock.advance(const Duration(milliseconds: 20));
+      }
+    }
+
+    test('typing next to the phone is not a pick-up', () async {
+      final session = build(target: const Duration(minutes: 5));
+      await settle(session);
+
+      await typeFor(10);
+
+      expect(session.stage, SessionStage.focusing);
+      expect(session.interruptions, 0);
+
+      session.dispose();
+    });
+
+    test('the strict level still alarms on it', () async {
+      final session = build(
+        target: const Duration(minutes: 5),
+        sensitivity: Sensitivity.strict,
+      );
+      await settle(session);
+
+      await typeFor(2);
+
+      expect(session.stage, SessionStage.interrupted);
+
+      session.dispose();
+    });
+
+    test('a phone that keeps shaking past the grace is a pick-up', () async {
+      final session = build(target: const Duration(minutes: 5));
+      await settle(session);
+
+      await feed.emit(thump);
+      clock.advance(const MotionThresholds().shakeGrace);
+      await feed.emit(thump);
+
+      expect(session.stage, SessionStage.interrupted);
+
+      session.dispose();
+    });
+
+    test('a session still arms on a desk that is being typed on', () async {
+      final session = build(target: const Duration(minutes: 5));
+
+      await feed.emit(FakeSensorFeed.still);
+      await typeFor(SessionController.armDelay.inMilliseconds / 1000 + 0.2);
+      await feed.emit(FakeSensorFeed.still);
+
+      expect(session.stage, SessionStage.focusing);
 
       session.dispose();
     });

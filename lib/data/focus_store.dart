@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../domain/focus_preferences.dart';
 import '../domain/focus_zone.dart';
 import '../domain/session_checkpoint.dart';
 import '../domain/session_record.dart';
@@ -17,6 +18,7 @@ class FocusStore {
   static const String _historyKey = 'focusar.history.v1';
   static const String _zoneKey = 'focusar.zone.v1';
   static const String _checkpointKey = 'focusar.checkpoint.v1';
+  static const String _preferencesKey = 'focusar.preferences.v1';
 
   /// Sessions kept in the log. Older ones fall off the end.
   static const int historyLimit = 30;
@@ -67,6 +69,16 @@ class FocusStore {
   Future<void> writeZone(ZoneTransform zone) =>
       _prefs.setString(_zoneKey, jsonEncode(zone.toJson()));
 
+  FocusPreferences readPreferences() {
+    final decoded = _readMap(_preferencesKey);
+    return decoded == null
+        ? FocusPreferences.defaults
+        : FocusPreferences.fromJson(decoded);
+  }
+
+  Future<void> writePreferences(FocusPreferences preferences) =>
+      _prefs.setString(_preferencesKey, jsonEncode(preferences.toJson()));
+
   SessionCheckpoint? readCheckpoint() {
     final decoded = _readMap(_checkpointKey);
     return decoded == null ? null : SessionCheckpoint.fromJson(decoded);
@@ -78,6 +90,7 @@ class FocusStore {
   Future<void> clearCheckpoint() => _prefs.remove(_checkpointKey);
 
   /// Wipes the balance, the log, the saved zone, and any unfinished session.
+  /// Preferences are settings, not progress, so they stay.
   Future<void> clear() async {
     await _prefs.remove(_walletKey);
     await _prefs.remove(_historyKey);

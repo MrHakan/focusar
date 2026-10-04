@@ -7,6 +7,7 @@ import '../../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
 import 'ar_placement_screen.dart';
 import 'session_screen.dart';
+import 'settings_screen.dart';
 import 'wallet_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -82,11 +83,20 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: const Icon(Icons.lock_rounded, size: 22),
                     ),
                     const SizedBox(width: 12),
-                    const Text(
-                      'FocusAR',
-                      style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
+                    const Expanded(
+                      child: Text(
+                        'FocusAR',
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
+                      ),
                     ),
-                    const Spacer(),
+                    IconButton(
+                      tooltip: 'Sensor settings',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _open(const SettingsScreen()),
+                      icon: const Icon(Icons.tune_rounded, color: Colors.white70),
+                    ),
+                    const SizedBox(width: 2),
                     _BalancePill(
                       label: wallet.balanceLabel,
                       onTap: () => Navigator.of(context).push(

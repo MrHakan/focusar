@@ -3,13 +3,16 @@ import 'package:flutter/foundation.dart';
 import '../data/focus_store.dart';
 import '../domain/coupon.dart';
 import '../domain/credit_rules.dart';
+import '../domain/focus_preferences.dart';
 import '../domain/focus_zone.dart';
+import '../domain/motion_guard.dart';
 import '../domain/session_checkpoint.dart';
 import '../domain/session_record.dart';
 import '../domain/wallet_snapshot.dart';
 
-/// Owns the saved state: the credit balance, the session log, and the last
-/// focus-zone size. Every mutation writes through to [FocusStore].
+/// Owns the saved state: the credit balance, the session log, the last
+/// focus-zone size, and the preferences. Every mutation writes through to
+/// [FocusStore].
 class WalletController extends ChangeNotifier {
   WalletController({
     required FocusStore store,
@@ -18,7 +21,8 @@ class WalletController extends ChangeNotifier {
         _now = clock ?? DateTime.now,
         _wallet = store.readWallet(),
         _history = store.readHistory(),
-        _zone = store.readZone();
+        _zone = store.readZone(),
+        _preferences = store.readPreferences();
 
   final FocusStore _store;
   final DateTime Function() _now;
@@ -26,12 +30,15 @@ class WalletController extends ChangeNotifier {
   WalletSnapshot _wallet;
   List<SessionRecord> _history;
   ZoneTransform _zone;
+  FocusPreferences _preferences;
 
   WalletSnapshot get wallet => _wallet;
   List<SessionRecord> get history => _history;
 
   /// The size and heading the focus zone was last left at.
   ZoneTransform get zone => _zone;
+
+  FocusPreferences get preferences => _preferences;
 
   double get balance => _wallet.balance;
   Duration get screenTime => _wallet.screenTime;
@@ -109,6 +116,9 @@ class WalletController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setSensitivity(Sensitivity sensitivity) =>
+      _updatePreferences(_preferences.copyWith(sensitivity: sensitivity));
+
   /// Drops coupons that quietly expired since the last launch.
   Future<void> pruneExpired() async {
     final next = _wallet.pruned(_now());
@@ -127,6 +137,13 @@ class WalletController extends ChangeNotifier {
 
   /// The balance rendered the way the focus card shows it.
   String get balanceLabel => CreditRules.formatCredits(_wallet.balance);
+
+  Future<void> _updatePreferences(FocusPreferences next) async {
+    if (next == _preferences) return;
+    _preferences = next;
+    await _store.writePreferences(next);
+    notifyListeners();
+  }
 
   Future<void> _update(WalletSnapshot next) async {
     _wallet = next;

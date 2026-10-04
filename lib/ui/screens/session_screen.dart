@@ -5,6 +5,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../data/sensor_feed.dart';
 import '../../domain/focus_clock.dart';
+import '../../domain/motion_guard.dart';
 import '../../domain/session_mode.dart';
 import '../../domain/session_record.dart';
 import '../../state/session_alerts.dart';
@@ -45,37 +46,44 @@ class SessionScreen extends StatefulWidget {
 }
 
 class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserver {
-  late final SessionController _session;
+  SessionController? _controller;
   WalletController? _wallet;
   SessionRecord? _result;
+
+  SessionController get _session => _controller!;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _session = SessionController(
-      config: widget.config,
-      feed: widget.feed ?? DeviceSensorFeed(),
-      alerts: widget.alerts ?? const PlatformAlerts(),
-      ticker: widget.ticker ?? defaultTickSource,
-      clock: widget.clock,
-      onComplete: _onComplete,
-      onCheckpoint: (checkpoint) => _wallet?.saveCheckpoint(checkpoint),
-    )..start();
     WakelockPlus.enable();
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _wallet = WalletScope.of(context);
+    final wallet = _wallet = WalletScope.of(context);
+    // Built here rather than in initState because the motion sensitivity is a
+    // saved preference. It is fixed for the session once it starts.
+    _controller ??= SessionController(
+      config: widget.config,
+      feed: widget.feed ?? DeviceSensorFeed(),
+      guard: MotionGuard.forSensitivity(wallet.preferences.sensitivity),
+      alerts: widget.alerts ?? const PlatformAlerts(),
+      ticker: widget.ticker ?? defaultTickSource,
+      clock: widget.clock,
+      onComplete: _onComplete,
+      onCheckpoint: (checkpoint) => _wallet?.saveCheckpoint(checkpoint),
+    )..start();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    final session = _controller;
+    if (session == null) return;
     switch (state) {
       case AppLifecycleState.resumed:
-        _session.reportReturned();
+        session.reportReturned();
         // The OS may have dropped the screen-on request while away.
         WakelockPlus.enable();
       case AppLifecycleState.inactive:
@@ -86,7 +94,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
-        _session.reportLeftApp();
+        session.reportLeftApp();
     }
   }
 
@@ -94,7 +102,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     WakelockPlus.disable();
-    _session.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 

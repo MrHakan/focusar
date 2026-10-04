@@ -13,8 +13,9 @@ minute earns a credit, and every credit buys a minute of screen time back.
    focus zone. Drag to reposition it, pinch to resize it, twist to align it.
 3. Put the phone face-down. The clock starts after it has been still for 1.2
    seconds.
-4. Lifting, tilting, or knocking the phone pauses the clock and starts a
-   repeating sound and haptic. Putting it back for a second resumes.
+4. Lifting or tilting the phone pauses the clock and starts a repeating sound
+   and haptic. Putting it back for a second resumes. Desk vibration is
+   tolerated — see [Motion sensitivity](#motion-sensitivity).
 5. Credits accrue per focused second. An unbroken run earns faster: 1.25x after
    25 minutes, 1.5x after 50, 2x after 90. Picking the phone up drops you back
    to the base rate.
@@ -24,6 +25,21 @@ minute earns a credit, and every credit buys a minute of screen time back.
 There is a **Pause** button for when you genuinely need the phone — it holds the
 clock and the credits without the alarm, and asks you to put the phone back down
 before counting resumes.
+
+## Motion sensitivity
+
+Desks shake. Typing, a mug set down, or another phone buzzing next to this one
+jolts the phone without turning it over, so the guard tells the two apart: a
+phone that turns or tilts is a pick-up after a fraction of a second, while one
+that only shakes in place gets a longer grace, and any calm sample in between
+forgives the shake. A hard snatch still alarms at once.
+
+The sensor settings (the slider icon on the home screen) offer three levels —
+**Strict** (the original behaviour), **Balanced** (the default), and
+**Relaxed** — and a **desk calibration**: lay the phone face-down where you
+work and carry on for eight seconds. FocusAR replays what it felt, 25% harder,
+through every level using the same guard a session uses, and suggests the
+strictest one that would not have raised a false alarm.
 
 ## Locking, backgrounding, and crashes
 
