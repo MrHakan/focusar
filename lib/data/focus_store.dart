@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../domain/focus_preferences.dart';
 import '../domain/focus_zone.dart';
+import '../domain/progress_log.dart';
 import '../domain/session_checkpoint.dart';
 import '../domain/session_record.dart';
 import '../domain/wallet_snapshot.dart';
@@ -19,6 +20,7 @@ class FocusStore {
   static const String _zoneKey = 'focusar.zone.v1';
   static const String _checkpointKey = 'focusar.checkpoint.v1';
   static const String _preferencesKey = 'focusar.preferences.v1';
+  static const String _progressKey = 'focusar.progress.v1';
 
   /// Sessions kept in the log. Older ones fall off the end.
   static const int historyLimit = 30;
@@ -69,6 +71,17 @@ class FocusStore {
   Future<void> writeZone(ZoneTransform zone) =>
       _prefs.setString(_zoneKey, jsonEncode(zone.toJson()));
 
+  /// `null` when no progress log was ever written — an install from before
+  /// the log existed — so the caller can rebuild it from the session log.
+  ProgressLog? readProgress() {
+    if (!_prefs.containsKey(_progressKey)) return null;
+    final decoded = _readMap(_progressKey);
+    return decoded == null ? ProgressLog.empty : ProgressLog.fromJson(decoded);
+  }
+
+  Future<void> writeProgress(ProgressLog progress) =>
+      _prefs.setString(_progressKey, jsonEncode(progress.toJson()));
+
   FocusPreferences readPreferences() {
     final decoded = _readMap(_preferencesKey);
     return decoded == null
@@ -96,6 +109,7 @@ class FocusStore {
     await _prefs.remove(_historyKey);
     await _prefs.remove(_zoneKey);
     await _prefs.remove(_checkpointKey);
+    await _prefs.remove(_progressKey);
   }
 
   /// Decodes a stored object, treating corrupt data as "nothing saved yet".

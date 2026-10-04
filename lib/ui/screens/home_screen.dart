@@ -6,6 +6,7 @@ import '../../state/wallet_scope.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
 import 'ar_placement_screen.dart';
+import 'progress_screen.dart';
 import 'session_screen.dart';
 import 'settings_screen.dart';
 import 'wallet_screen.dart';
@@ -121,7 +122,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   'minute of screen time back.',
                   style: text.bodyLarge?.copyWith(color: Colors.white70, height: 1.45),
                 ),
-                const SizedBox(height: 26),
+                const SizedBox(height: 22),
+                _TodayStrip(
+                  focused: wallet.today.focused,
+                  goal: wallet.preferences.dailyGoal,
+                  onTap: () => _open(const ProgressScreen()),
+                ),
+                const SizedBox(height: 12),
                 GlassCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -281,6 +288,85 @@ class _ModeTile extends StatelessWidget {
               const Icon(Icons.check_circle_rounded,
                   size: 20, color: FocusPalette.focusSoft),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Today's focus against the daily goal. Opens the progress screen.
+class _TodayStrip extends StatelessWidget {
+  const _TodayStrip({
+    required this.focused,
+    required this.goal,
+    required this.onTap,
+  });
+
+  final Duration focused;
+  final Duration goal;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final share =
+        goal.inSeconds == 0 ? 0.0 : (focused.inSeconds / goal.inSeconds).clamp(0.0, 1.0);
+    final met = goal > Duration.zero && focused >= goal;
+    return Semantics(
+      button: true,
+      label: 'Today ${formatSpan(focused)} of ${formatSpan(goal)} goal. Open progress.',
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(15, 12, 10, 12),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white12),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text('TODAY', style: kEyebrow),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            '${formatSpan(focused)} of ${formatSpan(goal)}',
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        if (met)
+                          const Icon(
+                            Icons.check_circle_rounded,
+                            size: 16,
+                            color: FocusPalette.done,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(99),
+                      child: LinearProgressIndicator(
+                        value: share,
+                        minHeight: 5,
+                        backgroundColor: Colors.white.withValues(alpha: 0.08),
+                        valueColor: const AlwaysStoppedAnimation(FocusPalette.chart),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Icon(Icons.chevron_right_rounded, color: Colors.white38),
+            ],
+          ),
         ),
       ),
     );

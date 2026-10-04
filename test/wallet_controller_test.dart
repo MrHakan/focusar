@@ -279,4 +279,65 @@ void main() {
       expect(next.takeRecovered(), isNull);
     });
   });
+
+  group('progress', () {
+    test('a banked session lands on today', () async {
+      final wallet = await open();
+
+      await wallet.commit(record(interruptions: 2));
+
+      expect(wallet.today.focused, const Duration(minutes: 60));
+      expect(wallet.today.interruptions, 2);
+      expect(wallet.weekOf(clock()).sessions, 1);
+    });
+
+    test('survives a reload', () async {
+      final wallet = await open();
+      await wallet.commit(record());
+
+      final reloaded = WalletController(store: await FocusStore.open(), clock: clock.call);
+
+      expect(reloaded.today.sessions, 1);
+    });
+
+    test('is rebuilt from the session log for an older install', () async {
+      final wallet = await open();
+      await wallet.commit(record());
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('focusar.progress.v1');
+
+      final upgraded = WalletController(store: await FocusStore.open(), clock: clock.call);
+
+      expect(upgraded.today.focused, const Duration(minutes: 60));
+    });
+
+    test('a reset clears it', () async {
+      final wallet = await open();
+      await wallet.commit(record());
+
+      await wallet.reset();
+
+      expect(wallet.today.sessions, 0);
+      expect(
+        WalletController(store: await FocusStore.open(), clock: clock.call).today.sessions,
+        0,
+      );
+    });
+
+    test('the daily goal defaults to an hour and is remembered', () async {
+      final wallet = await open();
+      expect(wallet.preferences.dailyGoal, const Duration(hours: 1));
+
+      await wallet.setDailyGoal(const Duration(hours: 2));
+      await wallet.setDailyGoal(Duration.zero);
+
+      expect(wallet.preferences.dailyGoal, const Duration(hours: 2));
+      expect(
+        WalletController(store: await FocusStore.open(), clock: clock.call)
+            .preferences
+            .dailyGoal,
+        const Duration(hours: 2),
+      );
+    });
+  });
 }

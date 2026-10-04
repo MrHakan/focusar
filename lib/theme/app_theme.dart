@@ -16,6 +16,10 @@ class FocusPalette {
   static const Color ink = Color(0xFF05101F);
   static const Color surface = Color(0xFF101F36);
 
+  /// The one series colour on the progress chart. Validated for the dark
+  /// surface: inside the dark-mode lightness band, above 3:1 contrast.
+  static const Color chart = Color(0xFF5C7CFF);
+
   /// Session states.
   static const Color alarm = Color(0xFFFF4D6D);
   static const Color done = Color(0xFF4ADE9B);

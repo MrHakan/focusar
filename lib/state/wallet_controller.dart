@@ -6,6 +6,7 @@ import '../domain/credit_rules.dart';
 import '../domain/focus_preferences.dart';
 import '../domain/focus_zone.dart';
 import '../domain/motion_guard.dart';
+import '../domain/progress_log.dart';
 import '../domain/session_checkpoint.dart';
 import '../domain/session_record.dart';
 import '../domain/wallet_snapshot.dart';
@@ -22,7 +23,8 @@ class WalletController extends ChangeNotifier {
         _wallet = store.readWallet(),
         _history = store.readHistory(),
         _zone = store.readZone(),
-        _preferences = store.readPreferences();
+        _preferences = store.readPreferences(),
+        _progress = store.readProgress();
 
   final FocusStore _store;
   final DateTime Function() _now;
@@ -31,6 +33,7 @@ class WalletController extends ChangeNotifier {
   List<SessionRecord> _history;
   ZoneTransform _zone;
   FocusPreferences _preferences;
+  ProgressLog? _progress;
 
   WalletSnapshot get wallet => _wallet;
   List<SessionRecord> get history => _history;
@@ -39,6 +42,17 @@ class WalletController extends ChangeNotifier {
   ZoneTransform get zone => _zone;
 
   FocusPreferences get preferences => _preferences;
+
+  /// Focus per day. Rebuilt from the session log on first use after an
+  /// update, so sessions banked before the log existed still count.
+  ProgressLog get progress => _progress ??= ProgressLog.fromHistory(_history);
+
+  /// Today's tally, against [FocusPreferences.dailyGoal].
+  DayTally get today => progress.dayAt(_now());
+
+  WeekSummary weekOf(DateTime moment) => progress.weekOf(moment);
+
+  DateTime now() => _now();
 
   double get balance => _wallet.balance;
   Duration get screenTime => _wallet.screenTime;
@@ -59,7 +73,9 @@ class WalletController extends ChangeNotifier {
   /// between these writes from banking the same session twice on recovery.
   Future<void> commit(SessionRecord record) async {
     await _update(_wallet.recording(record));
+    final progress = _progress = this.progress.recording(record);
     _history = await _store.appendSession(record);
+    await _store.writeProgress(progress);
     await _store.clearCheckpoint();
     notifyListeners();
   }
@@ -119,6 +135,11 @@ class WalletController extends ChangeNotifier {
   Future<void> setSensitivity(Sensitivity sensitivity) =>
       _updatePreferences(_preferences.copyWith(sensitivity: sensitivity));
 
+  Future<void> setDailyGoal(Duration goal) {
+    if (goal <= Duration.zero) return Future.value();
+    return _updatePreferences(_preferences.copyWith(dailyGoal: goal));
+  }
+
   /// Drops coupons that quietly expired since the last launch.
   Future<void> pruneExpired() async {
     final next = _wallet.pruned(_now());
@@ -131,6 +152,7 @@ class WalletController extends ChangeNotifier {
     await _store.clear();
     _wallet = WalletSnapshot.empty;
     _history = const [];
+    _progress = ProgressLog.empty;
     _zone = ZoneTransform.initial;
     notifyListeners();
   }

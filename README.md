@@ -26,6 +26,24 @@ There is a **Pause** button for when you genuinely need the phone — it holds t
 clock and the credits without the alarm, and asks you to put the phone back down
 before counting resumes.
 
+## Progress
+
+The **Today** strip on the home screen shows today's focus against a daily
+goal (one hour by default) and opens the progress screen:
+
+- today's focus, the goal, what is left, and pick-ups so far;
+- the week, Monday to Sunday: total focus with the change on the week before,
+  pick-ups (and pick-ups per focused hour), and days the goal was met;
+- a column chart of focus per day against a dashed goal line — tap a column
+  for its value — with the same numbers listed day by day underneath;
+- earlier weeks, as far back as the records go, and the daily goal itself
+  (30 minutes to 4 hours).
+
+Days are tallied in their own log, kept for 120 days, so weekly totals stay
+whole after the 30-entry session list trims. Installs from before the log
+existed rebuild it from the session list on first launch. A session counts on
+the day it started.
+
 ## AR placement
 
 The placement screen walks through **Scan → Place → Adjust**:
