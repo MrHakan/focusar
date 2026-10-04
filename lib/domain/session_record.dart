@@ -48,19 +48,13 @@ class SessionRecord {
         focused: json.readDuration('focusedSeconds'),
         creditsEarned: json.readDouble('creditsEarned'),
         interruptions: json.readInt('interruptions'),
-        mode: _enumByName(FocusMode.values, json['mode'], FocusMode.timed),
-        method: _enumByName(
+        mode: json.readEnum('mode', FocusMode.values, FocusMode.timed),
+        method: json.readEnum(
+          'method',
           PlacementMethod.values,
-          json['method'],
           PlacementMethod.motionOnly,
         ),
         completed: json.readBool('completed'),
       );
 }
 
-T _enumByName<T extends Enum>(List<T> values, Object? name, T fallback) {
-  for (final value in values) {
-    if (value.name == name) return value;
-  }
-  return fallback;
-}

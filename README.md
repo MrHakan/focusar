@@ -25,6 +25,26 @@ There is a **Pause** button for when you genuinely need the phone — it holds t
 clock and the credits without the alarm, and asks you to put the phone back down
 before counting resumes.
 
+## Locking, backgrounding, and crashes
+
+- **Leaving the app** — locking the screen, switching apps, or sending FocusAR
+  to the background — counts as one pick-up if the clock was running. While
+  the app is out of sight nothing counts and the sensors cannot resume the
+  session, so Android and iPhone behave the same whether or not the OS keeps
+  the app alive. Coming back shows how long you were away, and the phone has
+  to go face-down again before the clock moves.
+- **Transient overlays** — an incoming-call screen, a system sheet, the app
+  switcher passing over — are not pick-ups on their own. The app is still on
+  screen, so the motion sensors decide.
+- **A frozen app** — one the OS suspended without telling it — is caught by
+  the heartbeat: a beat more than five seconds late is treated as leaving,
+  and the gap is not paid for.
+- **A killed app** loses at most ten seconds. A running session saves a
+  checkpoint every ten focused seconds and whenever it stops counting; the
+  next launch banks it and says so. The balance and a marker of the last
+  banked session are written together, so a recovered session is never paid
+  twice.
+
 ## What it does not do
 
 FocusAR does not change the operating system's Focus or Digital Wellbeing

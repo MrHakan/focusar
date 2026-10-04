@@ -4,6 +4,7 @@ import '../data/focus_store.dart';
 import '../domain/coupon.dart';
 import '../domain/credit_rules.dart';
 import '../domain/focus_zone.dart';
+import '../domain/session_checkpoint.dart';
 import '../domain/session_record.dart';
 import '../domain/wallet_snapshot.dart';
 
@@ -43,10 +44,48 @@ class WalletController extends ChangeNotifier {
 
   bool canAfford(Duration amount) => _wallet.canAfford(amount);
 
+  SessionRecord? _recovered;
+
   /// Banks a finished session and appends it to the log.
+  ///
+  /// The balance is written first: it carries the marker that stops a crash
+  /// between these writes from banking the same session twice on recovery.
   Future<void> commit(SessionRecord record) async {
-    _history = await _store.appendSession(record);
     await _update(_wallet.recording(record));
+    _history = await _store.appendSession(record);
+    await _store.clearCheckpoint();
+    notifyListeners();
+  }
+
+  /// Saves a running session's progress so a killed app can still bank it.
+  /// Skipped once the session is banked, so a late write cannot resurrect it.
+  Future<void> saveCheckpoint(SessionCheckpoint checkpoint) async {
+    if (_wallet.hasBanked(checkpoint.startedAt)) return;
+    await _store.writeCheckpoint(checkpoint);
+  }
+
+  /// Banks a session the app was killed in the middle of. Call once at
+  /// launch, before any new session can start. Returns the banked record, or
+  /// `null` when there was nothing to recover.
+  Future<SessionRecord?> recoverUnfinished() async {
+    final checkpoint = _store.readCheckpoint();
+    if (checkpoint == null) return null;
+    if (!checkpoint.hasProgress || _wallet.hasBanked(checkpoint.startedAt)) {
+      await _store.clearCheckpoint();
+      return null;
+    }
+    final record = checkpoint.toRecord();
+    await commit(record);
+    _recovered = record;
+    return record;
+  }
+
+  /// The session [recoverUnfinished] banked, handed out once so the home
+  /// screen can say so.
+  SessionRecord? takeRecovered() {
+    final record = _recovered;
+    _recovered = null;
+    return record;
   }
 
   /// Buys a screen-time coupon. Returns `null` when the balance is short.

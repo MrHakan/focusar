@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:focusar/domain/credit_rules.dart';
+import 'package:focusar/domain/session_checkpoint.dart';
 import 'package:focusar/domain/session_mode.dart';
 import 'package:focusar/domain/session_record.dart';
 import 'package:focusar/state/session_controller.dart';
@@ -12,6 +13,7 @@ void main() {
   late RecordingAlerts alerts;
   late ManualClock clock;
   late List<SessionRecord> completed;
+  late List<SessionCheckpoint> checkpoints;
 
   setUp(() {
     feed = FakeSensorFeed();
@@ -19,6 +21,7 @@ void main() {
     alerts = RecordingAlerts();
     clock = ManualClock();
     completed = [];
+    checkpoints = [];
   });
 
   SessionController build({
@@ -36,6 +39,7 @@ void main() {
       ticker: ticker.call,
       clock: clock.call,
       onComplete: completed.add,
+      onCheckpoint: checkpoints.add,
     )..start();
   }
 
@@ -368,6 +372,163 @@ void main() {
 
       expect(completed.single.interruptions, 2);
       expect(completed.single.clean, isFalse);
+
+      session.dispose();
+    });
+  });
+
+  group('leaving the app', () {
+    test('mid-focus counts as a pick-up and stops the clock', () async {
+      final session = build(target: const Duration(minutes: 5));
+      await settle(session);
+      await ticker.tick(5);
+
+      session.reportLeftApp();
+      await ticker.tick(30);
+
+      expect(session.stage, SessionStage.interrupted);
+      expect(session.isAway, isTrue);
+      expect(session.interruptions, 1);
+      expect(session.focused, const Duration(seconds: 5));
+
+      session.dispose();
+    });
+
+    test('keeps the alarm quiet while away', () async {
+      final session = build(target: const Duration(minutes: 5));
+      await settle(session);
+
+      session.reportLeftApp();
+      final warnings = alerts.warnings;
+      await ticker.tick(10);
+
+      expect(warnings, 1);
+      expect(alerts.warnings, warnings);
+
+      session.dispose();
+    });
+
+    test('a still phone cannot resume the session from the lock screen',
+        () async {
+      final session = build(target: const Duration(minutes: 5));
+      await settle(session);
+      session.reportLeftApp();
+
+      await settle(session);
+      await ticker.tick(10);
+
+      expect(session.stage, SessionStage.interrupted);
+      expect(session.focused, Duration.zero);
+
+      session.dispose();
+    });
+
+    test('coming back asks for the phone again and reports the gap', () async {
+      final session = build(target: const Duration(minutes: 5));
+      await settle(session);
+      session.reportLeftApp();
+      clock.advance(const Duration(minutes: 3));
+
+      session.reportReturned();
+
+      expect(session.isAway, isFalse);
+      expect(session.lastAbsence, const Duration(minutes: 3));
+      expect(session.stage, SessionStage.interrupted);
+
+      await settle(session);
+      expect(session.stage, SessionStage.focusing);
+      await ticker.tick(4);
+      expect(session.focused, const Duration(seconds: 4));
+
+      session.dispose();
+    });
+
+    test('before the clock starts it costs nothing, but cannot arm', () async {
+      final session = build(target: const Duration(minutes: 5));
+
+      session.reportLeftApp();
+      await settle(session);
+
+      expect(session.stage, SessionStage.arming);
+      expect(session.interruptions, 0);
+
+      session.reportReturned();
+      await settle(session);
+      expect(session.stage, SessionStage.focusing);
+
+      session.dispose();
+    });
+
+    test('a frozen heartbeat is treated as leaving and is not paid', () async {
+      final session = build(target: const Duration(minutes: 5));
+      await settle(session);
+      await ticker.tick(3);
+
+      clock.advance(SessionController.maxHeartbeatGap + const Duration(seconds: 1));
+      await ticker.tick();
+
+      expect(session.stage, SessionStage.interrupted);
+      expect(session.focused, const Duration(seconds: 3));
+      expect(session.interruptions, 1);
+
+      session.dispose();
+    });
+  });
+
+  group('checkpoints', () {
+    test('are saved as focus accrues', () async {
+      final session = build(target: const Duration(minutes: 5));
+      await settle(session);
+
+      await ticker.tick(SessionController.checkpointEvery.inSeconds * 2);
+
+      expect(checkpoints, hasLength(2));
+      expect(checkpoints.last.focused, SessionController.checkpointEvery * 2);
+      expect(checkpoints.last.creditsEarned, closeTo(session.earnedCredits, 1e-9));
+      expect(checkpoints.last.config, session.config);
+
+      session.dispose();
+    });
+
+    test('are saved whenever counting stops', () async {
+      final session = build(target: const Duration(minutes: 5));
+      await settle(session);
+      await ticker.tick(3);
+
+      await feed.emit(FakeSensorFeed.grabbed);
+      expect(checkpoints.last.interruptions, 1);
+      expect(checkpoints.last.focused, const Duration(seconds: 3));
+
+      session.pause();
+      session.reportLeftApp();
+      expect(checkpoints, hasLength(3));
+
+      session.dispose();
+    });
+
+    test('stop once the session is over', () async {
+      final session = build(target: const Duration(seconds: 2));
+      await settle(session);
+      await ticker.tick(2);
+      final saved = checkpoints.length;
+
+      session.reportLeftApp();
+      session.pause();
+
+      expect(checkpoints, hasLength(saved));
+
+      session.dispose();
+    });
+
+    test('carry the start time that the final record will have', () async {
+      final session = build(target: const Duration(minutes: 5));
+      await settle(session);
+      await ticker.tick(SessionController.checkpointEvery.inSeconds);
+
+      session.stop();
+
+      expect(checkpoints.single.startedAt, completed.single.startedAt);
+      expect(checkpoints.single.toRecord().completed, isFalse);
 
       session.dispose();
     });

@@ -15,6 +15,7 @@ class WalletSnapshot {
     this.sessionsCompleted = 0,
     this.streakDays = 0,
     this.lastSessionDay,
+    this.lastBankedStart,
     this.coupons = const [],
   });
 
@@ -38,6 +39,14 @@ class WalletSnapshot {
   /// Midnight of the last day a session landed.
   final DateTime? lastSessionDay;
 
+  /// When the most recently banked session started. Written in the same save
+  /// as the balance it changed, so a session recovered after a crash can be
+  /// checked against it and never banked twice.
+  final DateTime? lastBankedStart;
+
+  /// `true` if a session that started at [startedAt] is already in the balance.
+  bool hasBanked(DateTime startedAt) => lastBankedStart == startedAt;
+
   final List<Coupon> coupons;
 
   /// The balance expressed the way the focus card shows it.
@@ -59,6 +68,7 @@ class WalletSnapshot {
       sessionsCompleted: sessionsCompleted + 1,
       streakDays: _streakAfter(day),
       lastSessionDay: day,
+      lastBankedStart: record.startedAt,
     );
   }
 
@@ -111,6 +121,7 @@ class WalletSnapshot {
     int? sessionsCompleted,
     int? streakDays,
     DateTime? lastSessionDay,
+    DateTime? lastBankedStart,
     List<Coupon>? coupons,
   }) =>
       WalletSnapshot(
@@ -120,6 +131,7 @@ class WalletSnapshot {
         sessionsCompleted: sessionsCompleted ?? this.sessionsCompleted,
         streakDays: streakDays ?? this.streakDays,
         lastSessionDay: lastSessionDay ?? this.lastSessionDay,
+        lastBankedStart: lastBankedStart ?? this.lastBankedStart,
         coupons: coupons ?? this.coupons,
       );
 
@@ -130,6 +142,7 @@ class WalletSnapshot {
         'sessionsCompleted': sessionsCompleted,
         'streakDays': streakDays,
         'lastSessionDay': lastSessionDay?.toIso8601String(),
+        'lastBankedStart': lastBankedStart?.toIso8601String(),
         'coupons': coupons.map((coupon) => coupon.toJson()).toList(),
       };
 
@@ -140,6 +153,7 @@ class WalletSnapshot {
         sessionsCompleted: json.readInt('sessionsCompleted'),
         streakDays: json.readInt('streakDays'),
         lastSessionDay: json.readDate('lastSessionDay'),
+        lastBankedStart: json.readDate('lastBankedStart'),
         coupons: json
             .readObjects('coupons')
             .map(Coupon.fromJson)

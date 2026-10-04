@@ -6,6 +6,7 @@ import '../data/sensor_feed.dart';
 import '../domain/credit_rules.dart';
 import '../domain/focus_clock.dart';
 import '../domain/motion_guard.dart';
+import '../domain/session_checkpoint.dart';
 import '../domain/session_mode.dart';
 import '../domain/session_record.dart';
 import 'session_alerts.dart';
@@ -30,6 +31,7 @@ class SessionController extends ChangeNotifier {
     Duration tickInterval = const Duration(seconds: 1),
     DateTime Function()? clock,
     this.onComplete,
+    this.onCheckpoint,
   })  : _feed = feed,
         _guard = guard,
         _alerts = alerts,
@@ -49,10 +51,22 @@ class SessionController extends ChangeNotifier {
   /// Brief movement is forgiven for this long before the alarm starts.
   static const Duration disturbanceGrace = Duration(milliseconds: 160);
 
+  /// Focused time between two checkpoints — the most a killed app can lose.
+  static const Duration checkpointEvery = Duration(seconds: 10);
+
+  /// A heartbeat this late means the app was frozen — suspended by the OS
+  /// without a lifecycle callback, or starved. Nobody watched the phone in
+  /// that gap, so none of it is paid for.
+  static const Duration maxHeartbeatGap = Duration(seconds: 5);
+
   final SessionConfig config;
 
   /// Called once, with the session's record, when it ends.
   final void Function(SessionRecord record)? onComplete;
+
+  /// Called with the session's progress whenever it is worth saving: every
+  /// [checkpointEvery] of focus, and whenever the session stops counting.
+  final void Function(SessionCheckpoint checkpoint)? onCheckpoint;
 
   final SensorFeed _feed;
   final MotionGuard _guard;
@@ -74,6 +88,10 @@ class SessionController extends ChangeNotifier {
   double _earned = 0;
   double _stability = 0;
   bool _finished = false;
+  bool _away = false;
+  DateTime? _awaySince;
+  DateTime? _lastBeat;
+  Duration _lastAbsence = Duration.zero;
 
   SessionStage get stage => _stage;
   bool get isRunning => _stage == SessionStage.focusing;
@@ -106,10 +124,33 @@ class SessionController extends ChangeNotifier {
   /// 0..1 calmness of the last sample, for the status ring.
   double get stability => _stability;
 
+  /// `true` while the app is out of sight — locked, backgrounded, or covered by
+  /// another app. Nothing counts and nothing resumes until it comes back.
+  bool get isAway => _away;
+
+  /// How long the app was last out of sight. That time was never counted.
+  Duration get lastAbsence => _lastAbsence;
+
+  /// The progress so far, in the shape that survives the app being killed.
+  /// `null` before [start].
+  SessionCheckpoint? get checkpoint {
+    final startedAt = _startedAt;
+    if (startedAt == null) return null;
+    return SessionCheckpoint(
+      config: config,
+      startedAt: startedAt,
+      savedAt: _now(),
+      focused: _timer.elapsed,
+      creditsEarned: _earned,
+      interruptions: _interruptions,
+    );
+  }
+
   /// Starts listening to the sensors. Call once.
   void start() {
     if (_samples != null) return;
     _startedAt = _now();
+    _lastBeat = _startedAt;
     _samples = _feed.samples.listen(_onSample);
     _ticks = _ticker(_tickInterval).listen((_) => _onTick());
   }
@@ -123,6 +164,7 @@ class SessionController extends ChangeNotifier {
     _stage = SessionStage.paused;
     _stableSince = null;
     _disturbedSince = null;
+    _saveCheckpoint();
     notifyListeners();
   }
 
@@ -135,16 +177,44 @@ class SessionController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// The app went to the background mid-session, which counts as a pick-up.
+  /// The app went out of sight: the screen was locked, another app came to
+  /// the front, or the app was sent to the background. Mid-focus that counts
+  /// as a pick-up. Either way the session holds still until [reportReturned]:
+  /// the sensors cannot resume it and the alarm stays quiet, so a phone that
+  /// keeps reporting from a pocket or a lock screen earns nothing.
   void reportLeftApp() {
-    if (_stage == SessionStage.focusing) _interrupt();
+    if (_stage == SessionStage.complete || _away) return;
+    _away = true;
+    _awaySince = _now();
+    _stableSince = null;
+    _disturbedSince = null;
+    if (_stage == SessionStage.focusing) {
+      _interrupt();
+    } else {
+      _saveCheckpoint();
+      notifyListeners();
+    }
+  }
+
+  /// The app is back in front. If it was focusing when it left, the phone has
+  /// to be put back down before the clock moves again.
+  void reportReturned() {
+    if (!_away) return;
+    _away = false;
+    final since = _awaySince;
+    _lastAbsence = since == null ? Duration.zero : _now().difference(since);
+    _awaySince = null;
+    _stableSince = null;
+    _disturbedSince = null;
+    _lastBeat = _now();
+    notifyListeners();
   }
 
   /// Ends the session early but keeps what was earned.
   void stop() => _finish(completed: false);
 
   void _onSample(MotionSample sample) {
-    if (_stage == SessionStage.complete) return;
+    if (_stage == SessionStage.complete || _away) return;
 
     final reading = _guard.evaluate(
       x: sample.x,
@@ -219,10 +289,22 @@ class SessionController extends ChangeNotifier {
     _stableSince = null;
     _disturbedSince = null;
     _alerts.warn();
+    _saveCheckpoint();
     notifyListeners();
   }
 
   void _onTick() {
+    final now = _now();
+    final last = _lastBeat;
+    _lastBeat = now;
+    if (_away) return;
+    if (last != null && now.difference(last) > maxHeartbeatGap) {
+      // Frozen without being told: treat it like leaving the app, and do not
+      // pay for this beat.
+      if (_stage == SessionStage.focusing) _interrupt();
+      return;
+    }
+
     switch (_stage) {
       case SessionStage.focusing:
         _earned += CreditRules.creditsForSecond(unbrokenRun);
@@ -231,6 +313,9 @@ class SessionController extends ChangeNotifier {
         if (_timer.isComplete) {
           _finish(completed: true);
         } else {
+          if (_timer.elapsedSeconds % checkpointEvery.inSeconds == 0) {
+            _saveCheckpoint();
+          }
           notifyListeners();
         }
       case SessionStage.interrupted:
@@ -264,6 +349,13 @@ class SessionController extends ChangeNotifier {
     );
     notifyListeners();
     onComplete?.call(record);
+  }
+
+  void _saveCheckpoint() {
+    final callback = onCheckpoint;
+    final snapshot = checkpoint;
+    if (callback == null || snapshot == null || _finished) return;
+    callback(snapshot);
   }
 
   /// Rebuilding on every raw sample would repaint ~50 times a second, so the

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../domain/focus_clock.dart';
 import '../../domain/session_mode.dart';
 import '../../state/wallet_scope.dart';
 import '../../theme/app_theme.dart';
@@ -20,6 +21,28 @@ class _HomeScreenState extends State<HomeScreen> {
 
   FocusMode _mode = FocusMode.timed;
   int _minutes = 25;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _announceRecovery());
+  }
+
+  /// Says so when the last session was cut short by the app being killed and
+  /// its progress was banked from the last checkpoint.
+  void _announceRecovery() {
+    if (!mounted) return;
+    final record = WalletScope.of(context).takeRecovered();
+    if (record == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Your last session was cut short. ${formatSpan(record.focused)} and '
+          '${record.creditsEarned.toStringAsFixed(1)} credits were banked.',
+        ),
+      ),
+    );
+  }
 
   SessionConfig _config(PlacementMethod method) => SessionConfig(
         mode: _mode,

@@ -3,17 +3,20 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../domain/focus_zone.dart';
+import '../domain/session_checkpoint.dart';
 import '../domain/session_record.dart';
 import '../domain/wallet_snapshot.dart';
 
 /// Everything FocusAR keeps between launches: the credit balance, the recent
-/// session log, and the size the focus zone was last left at.
+/// session log, the size the focus zone was last left at, and the running
+/// session's latest checkpoint.
 class FocusStore {
   FocusStore(this._prefs);
 
   static const String _walletKey = 'focusar.wallet.v1';
   static const String _historyKey = 'focusar.history.v1';
   static const String _zoneKey = 'focusar.zone.v1';
+  static const String _checkpointKey = 'focusar.checkpoint.v1';
 
   /// Sessions kept in the log. Older ones fall off the end.
   static const int historyLimit = 30;
@@ -64,11 +67,22 @@ class FocusStore {
   Future<void> writeZone(ZoneTransform zone) =>
       _prefs.setString(_zoneKey, jsonEncode(zone.toJson()));
 
-  /// Wipes the balance, the log, and the saved zone.
+  SessionCheckpoint? readCheckpoint() {
+    final decoded = _readMap(_checkpointKey);
+    return decoded == null ? null : SessionCheckpoint.fromJson(decoded);
+  }
+
+  Future<void> writeCheckpoint(SessionCheckpoint checkpoint) =>
+      _prefs.setString(_checkpointKey, jsonEncode(checkpoint.toJson()));
+
+  Future<void> clearCheckpoint() => _prefs.remove(_checkpointKey);
+
+  /// Wipes the balance, the log, the saved zone, and any unfinished session.
   Future<void> clear() async {
     await _prefs.remove(_walletKey);
     await _prefs.remove(_historyKey);
     await _prefs.remove(_zoneKey);
+    await _prefs.remove(_checkpointKey);
   }
 
   /// Decodes a stored object, treating corrupt data as "nothing saved yet".

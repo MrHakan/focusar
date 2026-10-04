@@ -60,6 +60,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       ticker: widget.ticker ?? defaultTickSource,
       clock: widget.clock,
       onComplete: _onComplete,
+      onCheckpoint: (checkpoint) => _wallet?.saveCheckpoint(checkpoint),
     )..start();
     WakelockPlus.enable();
   }
@@ -72,7 +73,21 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) _session.reportLeftApp();
+    switch (state) {
+      case AppLifecycleState.resumed:
+        _session.reportReturned();
+        // The OS may have dropped the screen-on request while away.
+        WakelockPlus.enable();
+      case AppLifecycleState.inactive:
+        // A call screen, a system sheet, or the app switcher passing over.
+        // The app is still on screen and the sensors still guard the phone,
+        // so this alone is not a pick-up.
+        break;
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+        _session.reportLeftApp();
+    }
   }
 
   @override
@@ -470,11 +485,19 @@ class _Footer extends StatelessWidget {
         SessionStage.focusing => session.tier.multiplier > 1
             ? '${session.tier.label} — earning ${session.tier.multiplierLabel}'
             : 'Stay unbroken for 25 minutes to earn 1.25x',
-        SessionStage.interrupted => 'Put it back face-down to resume.',
+        SessionStage.interrupted => session.lastAbsence >= const Duration(seconds: 1)
+            ? 'Away for ${_formatAbsence(session.lastAbsence)} — that did not count. '
+                'Put it back face-down to resume.'
+            : 'Put it back face-down to resume.',
         SessionStage.paused => 'Credits are not accruing while paused.',
         SessionStage.arming || SessionStage.complete => '',
       };
 }
+
+/// `45s` under a minute, `3m` or `1h 5m` above it.
+String _formatAbsence(Duration duration) => duration < const Duration(minutes: 1)
+    ? '${duration.inSeconds}s'
+    : formatSpan(duration);
 
 /// The white pill from the session screen.
 class _PillButton extends StatelessWidget {
