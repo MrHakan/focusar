@@ -10,7 +10,7 @@ minute earns a credit, and every credit buys a minute of screen time back.
 1. Pick a **Deep block** (25/45/60/90 minutes, counts down) or **Earn screen
    time** (open-ended, counts up).
 2. Start straight away on the motion sensors, or scan a surface and drop an AR
-   focus zone. Drag to reposition it, pinch to resize it, twist to align it.
+   focus zone — see [AR placement](#ar-placement).
 3. Put the phone face-down. The clock starts after it has been still for 1.2
    seconds.
 4. Lifting or tilting the phone pauses the clock and starts a repeating sound
@@ -25,6 +25,42 @@ minute earns a credit, and every credit buys a minute of screen time back.
 There is a **Pause** button for when you genuinely need the phone — it holds the
 clock and the credits without the alarm, and asks you to put the phone back down
 before counting resumes.
+
+## AR placement
+
+The placement screen walks through **Scan → Place → Adjust**:
+
+- **Scan.** A sweeping-phone hint until ARCore/ARKit reports a surface. After
+  ten seconds without one it explains what helps (light, texture).
+- **Place.** Taps go to the nearest tracked plane within 12 cm–2 m. Loose
+  feature points are only accepted before any plane exists, and the zone then
+  warns it may drift. Taps that miss say why (too close, too far, off the
+  surface).
+- **Adjust.** Drag to move, pinch or **− +** to resize, twist or the turn
+  buttons (15°) to rotate, reset to the phone-sized default. Tapping elsewhere
+  on the desk moves the zone there, keeping its size and heading.
+
+The anchor is always level — only the tap's position is kept — so a leaning
+hit pose cannot tilt the zone, and plane overlays are hidden once it is
+placed.
+
+**When tracking slips** (iOS), FocusAR polls ARKit for the camera and zone
+poses twice a second. An off-screen zone gets an arrow ("Zone is to your
+left"); poses that stop arriving or freeze for three seconds mark the zone
+lost, bring the planes back, and ask for a tap to put it back with the same
+size and heading. **Place again** does the same by hand on either platform.
+
+Android caveats, from `ar_flutter_plugin_2` 0.0.3's native code: its pose
+queries are unusable (the camera-pose call advances the AR session, and the
+anchor lookup cannot find local anchors), so the automatic lost-zone check is
+iOS-only; and it reads a node's rotation as radians where its renderer wants
+degrees, so headings cannot be set from Dart. On Android the turn buttons are
+hidden, the twist gesture (native) turns the zone, and resizing squares it up
+again — so resize first. FocusAR also works around two of the plugin's
+Android bugs: new models are sized from the first matrix value as metres
+(a phone-sized zone used to arrive a metre long), and gesture-end matrices
+come back transposed (echoing them snapped a dragged zone back onto its
+anchor).
 
 ## Motion sensitivity
 
