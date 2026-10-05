@@ -1,3 +1,5 @@
+import 'json_reader.dart';
+
 /// How a focus session is scored.
 enum FocusMode {
   /// A fixed block. The clock counts down and the session ends by itself.
@@ -62,4 +64,40 @@ class SessionConfig {
 
   bool get isTimed => mode == FocusMode.timed;
   bool get usesAr => method == PlacementMethod.arZone;
+
+  SessionConfig copyWith({FocusMode? mode, PlacementMethod? method, Duration? target}) =>
+      SessionConfig(
+        mode: mode ?? this.mode,
+        method: method ?? this.method,
+        target: target ?? this.target,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'mode': mode.name,
+        'method': method.name,
+        'targetSeconds': target.inSeconds,
+      };
+
+  static SessionConfig fromJson(Map<String, dynamic> json) {
+    final target = json.readDuration('targetSeconds');
+    return SessionConfig(
+      mode: json.readEnum('mode', FocusMode.values, FocusMode.timed),
+      method: json.readEnum(
+        'method',
+        PlacementMethod.values,
+        PlacementMethod.motionOnly,
+      ),
+      target: target > Duration.zero ? target : const Duration(minutes: 25),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is SessionConfig &&
+      other.mode == mode &&
+      other.method == method &&
+      other.target == target;
+
+  @override
+  int get hashCode => Object.hash(mode, method, target);
 }

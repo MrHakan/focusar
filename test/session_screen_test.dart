@@ -173,4 +173,50 @@ void main() {
 
     expect(find.textContaining('Your coupon is waiting'), findsOneWidget);
   });
+
+  testWidgets('a call screen passing over is not a pick-up', (tester) async {
+    await pumpSession(tester);
+    await settle(tester);
+    addTearDown(
+      () => tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed),
+    );
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+
+    expect(find.text('Locked in'), findsOneWidget);
+  });
+
+  testWidgets('locking the phone saves progress and holds the clock',
+      (tester) async {
+    await pumpSession(tester);
+    await settle(tester);
+    await run(tester, 12);
+    addTearDown(
+      () => tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed),
+    );
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    clock.advance(const Duration(seconds: 40));
+    await run(tester, 40);
+
+    final saved = (await FocusStore.open()).readCheckpoint();
+    expect(saved, isNotNull);
+    expect(saved!.focused, const Duration(seconds: 12));
+    expect(saved.interruptions, 1);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+
+    expect(find.text('No phone allowed'), findsOneWidget);
+    expect(find.text('24:48'), findsOneWidget);
+    expect(find.textContaining('Away for 40s'), findsOneWidget);
+  });
 }

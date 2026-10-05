@@ -18,6 +18,12 @@ class ZoneTransform {
 
   static const ZoneTransform initial = ZoneTransform();
 
+  /// One press of a size button.
+  static const double scaleStep = 1.15;
+
+  /// One press of a turn button: 15 degrees.
+  static const double rotationStep = math.pi / 12;
+
   /// Uniform size factor over the phone-sized default.
   final double scale;
 

@@ -31,6 +31,20 @@ extension JsonReader on Map<String, dynamic> {
     return value == null ? null : DateTime.tryParse(value);
   }
 
+  /// The enum value stored under [key] by name, or [fallback].
+  T readEnum<T extends Enum>(String key, List<T> values, T fallback) {
+    final name = this[key];
+    for (final value in values) {
+      if (value.name == name) return value;
+    }
+    return fallback;
+  }
+
+  Map<String, dynamic>? readObject(String key) {
+    final value = this[key];
+    return value is Map<String, dynamic> ? value : null;
+  }
+
   List<Map<String, dynamic>> readObjects(String key) {
     final value = this[key];
     if (value is! List) return const [];

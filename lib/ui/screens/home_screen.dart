@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../../domain/focus_clock.dart';
 import '../../domain/session_mode.dart';
 import '../../state/wallet_scope.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/glass_card.dart';
 import 'ar_placement_screen.dart';
+import 'progress_screen.dart';
 import 'session_screen.dart';
+import 'settings_screen.dart';
 import 'wallet_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -20,6 +23,43 @@ class _HomeScreenState extends State<HomeScreen> {
 
   FocusMode _mode = FocusMode.timed;
   int _minutes = 25;
+
+  bool _restored = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _announceRecovery());
+  }
+
+  /// Opens on the settings the last session used, so the choices on screen
+  /// match what quick start would do.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_restored) return;
+    _restored = true;
+    final last = WalletScope.of(context).preferences.lastConfig;
+    if (last == null) return;
+    _mode = last.mode;
+    if (_durations.contains(last.target.inMinutes)) _minutes = last.target.inMinutes;
+  }
+
+  /// Says so when the last session was cut short by the app being killed and
+  /// its progress was banked from the last checkpoint.
+  void _announceRecovery() {
+    if (!mounted) return;
+    final record = WalletScope.of(context).takeRecovered();
+    if (record == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Your last session was cut short. ${formatSpan(record.focused)} and '
+          '${record.creditsEarned.toStringAsFixed(1)} credits were banked.',
+        ),
+      ),
+    );
+  }
 
   SessionConfig _config(PlacementMethod method) => SessionConfig(
         mode: _mode,
@@ -59,11 +99,20 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: const Icon(Icons.lock_rounded, size: 22),
                     ),
                     const SizedBox(width: 12),
-                    const Text(
-                      'FocusAR',
-                      style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
+                    const Expanded(
+                      child: Text(
+                        'FocusAR',
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
+                      ),
                     ),
-                    const Spacer(),
+                    IconButton(
+                      tooltip: 'Sensor settings',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _open(const SettingsScreen()),
+                      icon: const Icon(Icons.tune_rounded, color: Colors.white70),
+                    ),
+                    const SizedBox(width: 2),
                     _BalancePill(
                       label: wallet.balanceLabel,
                       onTap: () => Navigator.of(context).push(
@@ -88,7 +137,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   'minute of screen time back.',
                   style: text.bodyLarge?.copyWith(color: Colors.white70, height: 1.45),
                 ),
-                const SizedBox(height: 26),
+                if (wallet.preferences.lastConfig case final last?) ...[
+                  const SizedBox(height: 22),
+                  _QuickStartCard(config: last, onTap: () => _start(last)),
+                ],
+                const SizedBox(height: 22),
+                _TodayStrip(
+                  focused: wallet.today.focused,
+                  goal: wallet.preferences.dailyGoal,
+                  onTap: () => _open(const ProgressScreen()),
+                ),
+                const SizedBox(height: 12),
                 GlassCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -184,6 +243,13 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Starts a session straight from [config]: the motion sensors begin at
+  /// once, and an AR session opens the placement screen, since an anchor
+  /// cannot outlive the camera session that made it.
+  void _start(SessionConfig config) => _open(
+        config.usesAr ? ArPlacementScreen(config: config) : SessionScreen(config: config),
+      );
+
   void _open(Widget screen) {
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
   }
@@ -248,6 +314,161 @@ class _ModeTile extends StatelessWidget {
               const Icon(Icons.check_circle_rounded,
                   size: 20, color: FocusPalette.focusSoft),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One tap back into the last session's settings.
+class _QuickStartCard extends StatelessWidget {
+  const _QuickStartCard({required this.config, required this.onTap});
+
+  final SessionConfig config;
+  final VoidCallback onTap;
+
+  String get _summary => [
+        config.mode.label,
+        if (config.isTimed) '${config.target.inMinutes} min',
+        config.usesAr ? 'AR zone' : 'Motion sensor',
+      ].join(' · ');
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Quick start: $_summary',
+      excludeSemantics: true,
+      child: Material(
+        color: FocusPalette.focus,
+        borderRadius: BorderRadius.circular(22),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(22),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 16, 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.play_arrow_rounded,
+                    color: FocusPalette.focus,
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Quick start',
+                        style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _summary,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.82),
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  config.usesAr ? Icons.view_in_ar_rounded : Icons.sensors_rounded,
+                  color: Colors.white70,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Today's focus against the daily goal. Opens the progress screen.
+class _TodayStrip extends StatelessWidget {
+  const _TodayStrip({
+    required this.focused,
+    required this.goal,
+    required this.onTap,
+  });
+
+  final Duration focused;
+  final Duration goal;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final share =
+        goal.inSeconds == 0 ? 0.0 : (focused.inSeconds / goal.inSeconds).clamp(0.0, 1.0);
+    final met = goal > Duration.zero && focused >= goal;
+    return Semantics(
+      button: true,
+      label: 'Today ${formatSpan(focused)} of ${formatSpan(goal)} goal. Open progress.',
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(15, 12, 10, 12),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white12),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text('TODAY', style: kEyebrow),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            '${formatSpan(focused)} of ${formatSpan(goal)}',
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        if (met)
+                          const Icon(
+                            Icons.check_circle_rounded,
+                            size: 16,
+                            color: FocusPalette.done,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(99),
+                      child: LinearProgressIndicator(
+                        value: share,
+                        minHeight: 5,
+                        backgroundColor: Colors.white.withValues(alpha: 0.08),
+                        valueColor: const AlwaysStoppedAnimation(FocusPalette.chart),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Icon(Icons.chevron_right_rounded, color: Colors.white38),
+            ],
+          ),
         ),
       ),
     );

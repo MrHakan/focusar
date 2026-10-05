@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:focusar/data/focus_store.dart';
 import 'package:focusar/domain/coupon.dart';
 import 'package:focusar/domain/focus_zone.dart';
+import 'package:focusar/domain/session_checkpoint.dart';
 import 'package:focusar/domain/session_mode.dart';
 import 'package:focusar/domain/session_record.dart';
 import 'package:focusar/state/wallet_controller.dart';
@@ -156,5 +157,187 @@ void main() {
 
     expect(wallet.balanceLabel, '798.00');
     expect(wallet.screenTime, const Duration(minutes: 798));
+  });
+
+  group('unfinished sessions', () {
+    SessionCheckpoint checkpoint({
+      Duration focused = const Duration(minutes: 12),
+      double credits = 12,
+      Duration target = const Duration(minutes: 25),
+    }) =>
+        SessionCheckpoint(
+          config: SessionConfig(
+            mode: FocusMode.timed,
+            method: PlacementMethod.motionOnly,
+            target: target,
+          ),
+          startedAt: clock(),
+          savedAt: clock().add(focused),
+          focused: focused,
+          creditsEarned: credits,
+          interruptions: 2,
+        );
+
+    Future<WalletController> relaunch() async =>
+        WalletController(store: await FocusStore.open(), clock: clock.call);
+
+    test('a killed session is banked on the next launch', () async {
+      final wallet = await open();
+      await wallet.saveCheckpoint(checkpoint());
+
+      final next = await relaunch();
+      final recovered = await next.recoverUnfinished();
+
+      expect(recovered, isNotNull);
+      expect(recovered!.focused, const Duration(minutes: 12));
+      expect(recovered.completed, isFalse);
+      expect(recovered.interruptions, 2);
+      expect(next.balance, 12);
+      expect(next.history.single.creditsEarned, 12);
+    });
+
+    test('is banked once, however many times the app starts', () async {
+      final wallet = await open();
+      await wallet.saveCheckpoint(checkpoint());
+
+      await (await relaunch()).recoverUnfinished();
+      final again = await relaunch();
+      final second = await again.recoverUnfinished();
+
+      expect(second, isNull);
+      expect(again.balance, 12);
+      expect(again.history, hasLength(1));
+    });
+
+    test('a checkpoint that outlived its commit is never banked twice',
+        () async {
+      final wallet = await open();
+      final saved = checkpoint();
+      await wallet.saveCheckpoint(saved);
+      await wallet.commit(saved.toRecord());
+      // A late write from the session racing its own commit.
+      await wallet.saveCheckpoint(saved);
+
+      final next = await relaunch();
+
+      expect(await next.recoverUnfinished(), isNull);
+      expect(next.balance, 12);
+    });
+
+    test('a crash between the balance and the log write is not paid twice',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = await FocusStore.open();
+      final saved = checkpoint();
+      await store.writeCheckpoint(saved);
+      await store.writeWallet(store.readWallet().recording(saved.toRecord()));
+
+      final next = await relaunch();
+
+      expect(await next.recoverUnfinished(), isNull);
+      expect(next.balance, 12);
+    });
+
+    test('a finished session leaves nothing to recover', () async {
+      final wallet = await open();
+      final saved = checkpoint();
+      await wallet.saveCheckpoint(saved);
+
+      await wallet.commit(saved.toRecord());
+
+      expect(await (await relaunch()).recoverUnfinished(), isNull);
+    });
+
+    test('a session killed before it counted anything is dropped', () async {
+      final wallet = await open();
+      await wallet.saveCheckpoint(checkpoint(focused: Duration.zero, credits: 0));
+
+      final next = await relaunch();
+
+      expect(await next.recoverUnfinished(), isNull);
+      expect(next.sessionsCompleted, 0);
+    });
+
+    test('a block that reached its target is recovered as completed', () async {
+      final wallet = await open();
+      await wallet.saveCheckpoint(
+        checkpoint(focused: const Duration(minutes: 25), credits: 25),
+      );
+
+      final recovered = await (await relaunch()).recoverUnfinished();
+
+      expect(recovered!.completed, isTrue);
+    });
+
+    test('hands the recovered record to the UI exactly once', () async {
+      final wallet = await open();
+      await wallet.saveCheckpoint(checkpoint());
+      final next = await relaunch();
+      await next.recoverUnfinished();
+
+      expect(next.takeRecovered(), isNotNull);
+      expect(next.takeRecovered(), isNull);
+    });
+  });
+
+  group('progress', () {
+    test('a banked session lands on today', () async {
+      final wallet = await open();
+
+      await wallet.commit(record(interruptions: 2));
+
+      expect(wallet.today.focused, const Duration(minutes: 60));
+      expect(wallet.today.interruptions, 2);
+      expect(wallet.weekOf(clock()).sessions, 1);
+    });
+
+    test('survives a reload', () async {
+      final wallet = await open();
+      await wallet.commit(record());
+
+      final reloaded = WalletController(store: await FocusStore.open(), clock: clock.call);
+
+      expect(reloaded.today.sessions, 1);
+    });
+
+    test('is rebuilt from the session log for an older install', () async {
+      final wallet = await open();
+      await wallet.commit(record());
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('focusar.progress.v1');
+
+      final upgraded = WalletController(store: await FocusStore.open(), clock: clock.call);
+
+      expect(upgraded.today.focused, const Duration(minutes: 60));
+    });
+
+    test('a reset clears it', () async {
+      final wallet = await open();
+      await wallet.commit(record());
+
+      await wallet.reset();
+
+      expect(wallet.today.sessions, 0);
+      expect(
+        WalletController(store: await FocusStore.open(), clock: clock.call).today.sessions,
+        0,
+      );
+    });
+
+    test('the daily goal defaults to an hour and is remembered', () async {
+      final wallet = await open();
+      expect(wallet.preferences.dailyGoal, const Duration(hours: 1));
+
+      await wallet.setDailyGoal(const Duration(hours: 2));
+      await wallet.setDailyGoal(Duration.zero);
+
+      expect(wallet.preferences.dailyGoal, const Duration(hours: 2));
+      expect(
+        WalletController(store: await FocusStore.open(), clock: clock.call)
+            .preferences
+            .dailyGoal,
+        const Duration(hours: 2),
+      );
+    });
   });
 }

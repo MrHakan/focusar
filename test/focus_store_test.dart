@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:focusar/data/focus_store.dart';
 import 'package:focusar/domain/focus_zone.dart';
+import 'package:focusar/domain/session_checkpoint.dart';
 import 'package:focusar/domain/session_mode.dart';
 import 'package:focusar/domain/session_record.dart';
 import 'package:focusar/domain/wallet_snapshot.dart';
@@ -83,6 +84,42 @@ void main() {
     await store.writeZone(zone);
 
     expect(store.readZone(), zone);
+  });
+
+  test('round-trips a running session checkpoint', () async {
+    final store = await openStore();
+    final checkpoint = SessionCheckpoint(
+      config: const SessionConfig(
+        mode: FocusMode.timed,
+        method: PlacementMethod.arZone,
+        target: Duration(minutes: 45),
+      ),
+      startedAt: day,
+      savedAt: day.add(const Duration(minutes: 7)),
+      focused: const Duration(minutes: 6, seconds: 30),
+      creditsEarned: 6.5,
+      interruptions: 1,
+    );
+
+    await store.writeCheckpoint(checkpoint);
+    final restored = store.readCheckpoint()!;
+
+    expect(restored.config, checkpoint.config);
+    expect(restored.startedAt, day);
+    expect(restored.focused, const Duration(minutes: 6, seconds: 30));
+    expect(restored.creditsEarned, 6.5);
+    expect(restored.interruptions, 1);
+
+    await store.clearCheckpoint();
+    expect(store.readCheckpoint(), isNull);
+  });
+
+  test('drops a checkpoint that lost its start time', () async {
+    final store = await openStore({
+      'focusar.checkpoint.v1': '{"focusedSeconds":60,"creditsEarned":1}',
+    });
+
+    expect(store.readCheckpoint(), isNull);
   });
 
   test('treats unreadable stored data as nothing saved', () async {

@@ -8,13 +8,18 @@ minute earns a credit, and every credit buys a minute of screen time back.
 ## Flow
 
 1. Pick a **Deep block** (25/45/60/90 minutes, counts down) or **Earn screen
-   time** (open-ended, counts up).
+   time** (open-ended, counts up). After the first session, **Quick start**
+   on the home screen starts the next one with the same type, length, and
+   placement in one tap (an AR session opens straight onto placement, since
+   an anchor cannot outlive its camera session), and the home screen opens
+   on those settings.
 2. Start straight away on the motion sensors, or scan a surface and drop an AR
-   focus zone. Drag to reposition it, pinch to resize it, twist to align it.
+   focus zone — see [AR placement](#ar-placement).
 3. Put the phone face-down. The clock starts after it has been still for 1.2
    seconds.
-4. Lifting, tilting, or knocking the phone pauses the clock and starts a
-   repeating sound and haptic. Putting it back for a second resumes.
+4. Lifting or tilting the phone pauses the clock and starts a repeating sound
+   and haptic. Putting it back for a second resumes. Desk vibration is
+   tolerated — see [Motion sensitivity](#motion-sensitivity).
 5. Credits accrue per focused second. An unbroken run earns faster: 1.25x after
    25 minutes, 1.5x after 50, 2x after 90. Picking the phone up drops you back
    to the base rate.
@@ -24,6 +29,95 @@ minute earns a credit, and every credit buys a minute of screen time back.
 There is a **Pause** button for when you genuinely need the phone — it holds the
 clock and the credits without the alarm, and asks you to put the phone back down
 before counting resumes.
+
+## Progress
+
+The **Today** strip on the home screen shows today's focus against a daily
+goal (one hour by default) and opens the progress screen:
+
+- today's focus, the goal, what is left, and pick-ups so far;
+- the week, Monday to Sunday: total focus with the change on the week before,
+  pick-ups (and pick-ups per focused hour), and days the goal was met;
+- a column chart of focus per day against a dashed goal line — tap a column
+  for its value — with the same numbers listed day by day underneath;
+- earlier weeks, as far back as the records go, and the daily goal itself
+  (30 minutes to 4 hours).
+
+Days are tallied in their own log, kept for 120 days, so weekly totals stay
+whole after the 30-entry session list trims. Installs from before the log
+existed rebuild it from the session list on first launch. A session counts on
+the day it started.
+
+## AR placement
+
+The placement screen walks through **Scan → Place → Adjust**:
+
+- **Scan.** A sweeping-phone hint until ARCore/ARKit reports a surface. After
+  ten seconds without one it explains what helps (light, texture).
+- **Place.** Taps go to the nearest tracked plane within 12 cm–2 m. Loose
+  feature points are only accepted before any plane exists, and the zone then
+  warns it may drift. Taps that miss say why (too close, too far, off the
+  surface).
+- **Adjust.** Drag to move, pinch or **− +** to resize, twist or the turn
+  buttons (15°) to rotate, reset to the phone-sized default. Tapping elsewhere
+  on the desk moves the zone there, keeping its size and heading.
+
+The anchor is always level — only the tap's position is kept — so a leaning
+hit pose cannot tilt the zone, and plane overlays are hidden once it is
+placed.
+
+**When tracking slips** (iOS), FocusAR polls ARKit for the camera and zone
+poses twice a second. An off-screen zone gets an arrow ("Zone is to your
+left"); poses that stop arriving or freeze for three seconds mark the zone
+lost, bring the planes back, and ask for a tap to put it back with the same
+size and heading. **Place again** does the same by hand on either platform.
+
+Android caveats, from `ar_flutter_plugin_2` 0.0.3's native code: its pose
+queries are unusable (the camera-pose call advances the AR session, and the
+anchor lookup cannot find local anchors), so the automatic lost-zone check is
+iOS-only; and it reads a node's rotation as radians where its renderer wants
+degrees, so headings cannot be set from Dart. On Android the turn buttons are
+hidden, the twist gesture (native) turns the zone, and resizing squares it up
+again — so resize first. FocusAR also works around two of the plugin's
+Android bugs: new models are sized from the first matrix value as metres
+(a phone-sized zone used to arrive a metre long), and gesture-end matrices
+come back transposed (echoing them snapped a dragged zone back onto its
+anchor).
+
+## Motion sensitivity
+
+Desks shake. Typing, a mug set down, or another phone buzzing next to this one
+jolts the phone without turning it over, so the guard tells the two apart: a
+phone that turns or tilts is a pick-up after a fraction of a second, while one
+that only shakes in place gets a longer grace, and any calm sample in between
+forgives the shake. A hard snatch still alarms at once.
+
+The sensor settings (the slider icon on the home screen) offer three levels —
+**Strict** (the original behaviour), **Balanced** (the default), and
+**Relaxed** — and a **desk calibration**: lay the phone face-down where you
+work and carry on for eight seconds. FocusAR replays what it felt, 25% harder,
+through every level using the same guard a session uses, and suggests the
+strictest one that would not have raised a false alarm.
+
+## Locking, backgrounding, and crashes
+
+- **Leaving the app** — locking the screen, switching apps, or sending FocusAR
+  to the background — counts as one pick-up if the clock was running. While
+  the app is out of sight nothing counts and the sensors cannot resume the
+  session, so Android and iPhone behave the same whether or not the OS keeps
+  the app alive. Coming back shows how long you were away, and the phone has
+  to go face-down again before the clock moves.
+- **Transient overlays** — an incoming-call screen, a system sheet, the app
+  switcher passing over — are not pick-ups on their own. The app is still on
+  screen, so the motion sensors decide.
+- **A frozen app** — one the OS suspended without telling it — is caught by
+  the heartbeat: a beat more than five seconds late is treated as leaving,
+  and the gap is not paid for.
+- **A killed app** loses at most ten seconds. A running session saves a
+  checkpoint every ten focused seconds and whenever it stops counting; the
+  next launch banks it and says so. The balance and a marker of the last
+  banked session are written together, so a recovered session is never paid
+  twice.
 
 ## What it does not do
 

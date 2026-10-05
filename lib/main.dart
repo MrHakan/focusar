@@ -9,5 +9,6 @@ Future<void> main() async {
   final store = await FocusStore.open();
   final wallet = WalletController(store: store);
   await wallet.pruneExpired();
+  await wallet.recoverUnfinished();
   runApp(FocusArApp(wallet: wallet));
 }

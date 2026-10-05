@@ -5,6 +5,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../data/sensor_feed.dart';
 import '../../domain/focus_clock.dart';
+import '../../domain/motion_guard.dart';
 import '../../domain/session_mode.dart';
 import '../../domain/session_record.dart';
 import '../../state/session_alerts.dart';
@@ -45,41 +46,65 @@ class SessionScreen extends StatefulWidget {
 }
 
 class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserver {
-  late final SessionController _session;
+  SessionController? _controller;
   WalletController? _wallet;
   SessionRecord? _result;
+
+  SessionController get _session => _controller!;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _session = SessionController(
-      config: widget.config,
-      feed: widget.feed ?? DeviceSensorFeed(),
-      alerts: widget.alerts ?? const PlatformAlerts(),
-      ticker: widget.ticker ?? defaultTickSource,
-      clock: widget.clock,
-      onComplete: _onComplete,
-    )..start();
     WakelockPlus.enable();
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _wallet = WalletScope.of(context);
+    final wallet = _wallet = WalletScope.of(context);
+    // Built here rather than in initState because the motion sensitivity is a
+    // saved preference. It is fixed for the session once it starts.
+    if (_controller != null) return;
+    unawaited(wallet.rememberConfig(widget.config));
+    _controller = SessionController(
+      config: widget.config,
+      feed: widget.feed ?? DeviceSensorFeed(),
+      guard: MotionGuard.forSensitivity(wallet.preferences.sensitivity),
+      alerts: widget.alerts ?? const PlatformAlerts(),
+      ticker: widget.ticker ?? defaultTickSource,
+      clock: widget.clock,
+      onComplete: _onComplete,
+      onCheckpoint: (checkpoint) => _wallet?.saveCheckpoint(checkpoint),
+    )..start();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) _session.reportLeftApp();
+    final session = _controller;
+    if (session == null) return;
+    switch (state) {
+      case AppLifecycleState.resumed:
+        session.reportReturned();
+        // The OS may have dropped the screen-on request while away.
+        WakelockPlus.enable();
+      case AppLifecycleState.inactive:
+        // A call screen, a system sheet, or the app switcher passing over.
+        // The app is still on screen and the sensors still guard the phone,
+        // so this alone is not a pick-up.
+        break;
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+        session.reportLeftApp();
+    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     WakelockPlus.disable();
-    _session.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
@@ -470,11 +495,19 @@ class _Footer extends StatelessWidget {
         SessionStage.focusing => session.tier.multiplier > 1
             ? '${session.tier.label} — earning ${session.tier.multiplierLabel}'
             : 'Stay unbroken for 25 minutes to earn 1.25x',
-        SessionStage.interrupted => 'Put it back face-down to resume.',
+        SessionStage.interrupted => session.lastAbsence >= const Duration(seconds: 1)
+            ? 'Away for ${_formatAbsence(session.lastAbsence)} — that did not count. '
+                'Put it back face-down to resume.'
+            : 'Put it back face-down to resume.',
         SessionStage.paused => 'Credits are not accruing while paused.',
         SessionStage.arming || SessionStage.complete => '',
       };
 }
+
+/// `45s` under a minute, `3m` or `1h 5m` above it.
+String _formatAbsence(Duration duration) => duration < const Duration(minutes: 1)
+    ? '${duration.inSeconds}s'
+    : formatSpan(duration);
 
 /// The white pill from the session screen.
 class _PillButton extends StatelessWidget {
